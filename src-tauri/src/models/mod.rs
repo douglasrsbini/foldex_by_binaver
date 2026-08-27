@@ -14,6 +14,12 @@ pub struct RuleAction {
     pub id: Option<i64>,
     pub action_type: String,
     pub target_pattern: String,
+    // ⚡ Novos campos mapeados
+    pub clean_accents: Option<bool>,
+    pub replace_spaces: Option<bool>,
+    pub case_format: Option<String>,
+    pub regex_pattern: Option<String>,
+    pub regex_replacement: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

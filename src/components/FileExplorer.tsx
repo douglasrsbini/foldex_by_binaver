@@ -6,8 +6,10 @@ import {
   RefreshCw, Plus, Scissors, Copy, ClipboardPaste, Trash2, Edit3, FileArchive, Info, 
   Search, FolderInput, Star, LayoutGrid, LayoutList, ArrowUpDown, X, FileText, 
   FileSpreadsheet, FileImage, FileCode, FileAudio, FileVideo, Monitor, Download, 
-  Image as ImageIcon, Flame, Clock, ChevronDown, CheckSquare, Square, AlertTriangle
+  Image as ImageIcon, Clock, ChevronDown, CheckSquare, Square, AlertTriangle,
+  Lock, Eye, EyeOff
 } from 'lucide-react';
+import { useTranslation } from 'react-i18next'; // ⚡ Óculos Mágicos Injetados!
 
 interface FileExplorerProps {
   onSetSource?: (path: string) => void;
@@ -22,15 +24,18 @@ type SortDirection = 'asc' | 'desc';
 
 interface ContextMenuState { visible: boolean; x: number; y: number; targetItem: FileItem | null; }
 
-// Constantes de Alta Performance
 const ROW_HEIGHT = 40;       
 const GRID_ITEM_HEIGHT = 110; 
 const OVERSCAN = 10;         
 
 export const FileExplorer: React.FC<FileExplorerProps> = ({ onSetSource, accentColor }) => {
+  const { t } = useTranslation(); 
+
   const [drives, setDrives] = useState<DriveInfo[]>([]);
   const [userHomePath, setUserHomePath] = useState<string>('');
+  
   const [currentPath, setCurrentPath] = useState<string>('');
+  
   const [pathHistory, setPathHistory] = useState<string[]>([]);
   const [futureHistory, setFutureHistory] = useState<string[]>([]);
   const [items, setItems] = useState<FileItem[]>([]);
@@ -66,12 +71,6 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ onSetSource, accentC
     return [];
   });
 
-  const [frequentPaths, setFrequentPaths] = useState<RecentOrFrequentFolder[]>(() => {
-    const saved = localStorage.getItem('explorer_frequent_paths');
-    if (saved) { try { return JSON.parse(saved); } catch { /* ignore */ } }
-    return [];
-  });
-
   const [clipboard, setClipboard] = useState<{ paths: string[]; isCut: boolean } | null>(null);
   const [contextMenu, setContextMenu] = useState<ContextMenuState>({ visible: false, x: 0, y: 0, targetItem: null });
   const [showNewDropdown, setShowNewDropdown] = useState<boolean>(false);
@@ -90,17 +89,68 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ onSetSource, accentC
   const [propertiesModal, setPropertiesModal] = useState<FileProperties | null>(null);
   const [showDeleteModal, setShowDeleteModal] = useState<boolean>(false);
 
+  const [showZipModal, setShowZipModal] = useState<boolean>(false);
+  const [zipFileName, setZipFileName] = useState<string>('');
+  const [zipEncrypt, setZipEncrypt] = useState<boolean>(false);
+  const [zipPassword, setZipPassword] = useState<string>('');
+  const [showZipPassword, setShowZipPassword] = useState<boolean>(false);
+
   const [isEditingPath, setIsEditingPath] = useState<boolean>(false);
   const [inputPathValue, setInputPathValue] = useState<string>('');
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [scrollInfo, setScrollInfo] = useState({ top: 0, height: 800, width: 800 });
 
-  useEffect(() => { loadDrivesAndInitialPath(); }, []);
+  // ⚡ INTERCEPTADORES DE TRADUÇÃO DE UI (MAQUIAGEM)
+  const translateDriveName = (name: string) => {
+    // Intercepta "Disco Local", "Local Disk" e troca pela tradução do idioma atual preservando a letra (C:)
+    return name.replace(/^(Disco Local|Local Disk|Disque Local|Disco local)\s*/i, `${t('explorer.local_disk')} `);
+  };
+
+  const translateSystemFolderName = (name: string) => {
+    // Intercepta pastas raiz do Windows nas sessões "Recentes" e "Favoritos"
+    const lowerName = name.toLowerCase();
+    if (lowerName === 'área de trabalho' || lowerName === 'desktop') return t('explorer.quick_desktop');
+    if (lowerName === 'downloads') return t('explorer.quick_downloads');
+    if (lowerName === 'documentos' || lowerName === 'documents') return t('explorer.quick_documents');
+    if (lowerName === 'imagens' || lowerName === 'pictures') return t('explorer.quick_pictures');
+    return name; // Se não for sistema, mantém o nome real da pasta
+  };
+
+  useEffect(() => { 
+    const initializeExplorer = async () => {
+      try {
+        const driveList = await invoke<DriveInfo[]>('list_drives');
+        setDrives(driveList || []);
+        
+        const uPath = await invoke<string>('get_default_user_path');
+        if (uPath) setUserHomePath(uPath);
+
+        const savedPath = sessionStorage.getItem('explorer_last_path');
+        
+        if (savedPath) {
+          navigateTo(savedPath, false);
+        } else {
+          const driveC = driveList?.find(d => d.path.toUpperCase().startsWith('C:'));
+          if (driveC) {
+            navigateTo(driveC.path, false);
+          } else if (uPath) {
+            navigateTo(uPath, false);
+          } else if (driveList && driveList.length > 0) {
+            navigateTo(driveList[0].path, false);
+          }
+        }
+      } catch (e) {
+        console.error('Erro na inicialização do explorador:', e);
+      }
+    };
+
+    initializeExplorer(); 
+  }, []);
+
   useEffect(() => { localStorage.setItem('explorer_view_mode', viewMode); }, [viewMode]);
   useEffect(() => { localStorage.setItem('explorer_favorites', JSON.stringify(favorites)); }, [favorites]);
   useEffect(() => { localStorage.setItem('explorer_recent_paths', JSON.stringify(recentPaths)); }, [recentPaths]);
-  useEffect(() => { localStorage.setItem('explorer_frequent_paths', JSON.stringify(frequentPaths)); }, [frequentPaths]);
   useEffect(() => { localStorage.setItem('explorer_sidebar_width', sidebarWidth.toString()); }, [sidebarWidth]);
 
   useEffect(() => {
@@ -195,32 +245,14 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ onSetSource, accentC
     };
   }, []);
 
-  const loadDrivesAndInitialPath = async () => {
-    try {
-      const driveList = await invoke<DriveInfo[]>('list_drives');
-      setDrives(driveList || []);
-      const userPath = await invoke<string>('get_default_user_path');
-      if (userPath) { setUserHomePath(userPath); navigateTo(userPath, false); }
-      else if (driveList && driveList.length > 0) { navigateTo(driveList[0].path, false); }
-    } catch (e) { console.error('Erro ao inicializar unidades:', e); }
-  };
-
   const registerFolderAccess = (path: string) => {
     if (!path) return;
     const folderName = path.split(/[\/\\]/).filter(Boolean).pop() || path;
+    if (folderName.length === 2 && folderName.endsWith(':')) return; 
+
     setRecentPaths(prev => {
       const filtered = prev.filter(p => p.path.toLowerCase() !== path.toLowerCase());
       return [{ name: folderName, path }, ...filtered].slice(0, 5);
-    });
-    setFrequentPaths(prev => {
-      const existing = prev.find(p => p.path.toLowerCase() === path.toLowerCase());
-      let updated: RecentOrFrequentFolder[];
-      if (existing) {
-        updated = prev.map(p => p.path.toLowerCase() === path.toLowerCase() ? { ...p, count: (p.count || 1) + 1 } : p);
-      } else {
-        updated = [...prev, { name: folderName, path, count: 1 }];
-      }
-      return updated.sort((a, b) => (b.count || 0) - (a.count || 0)).slice(0, 4);
     });
   };
 
@@ -235,6 +267,9 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ onSetSource, accentC
         setFutureHistory([]);
       }
       setCurrentPath(newPath);
+      
+      sessionStorage.setItem('explorer_last_path', newPath);
+
       setInputPathValue(newPath);
       setIsEditingPath(false);
       setSelectedPaths([]);
@@ -247,7 +282,7 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ onSetSource, accentC
         setScrollInfo(prev => ({ ...prev, top: 0 }));
       }
     } catch (e) {
-      alert(`Não foi possível abrir o diretório: ${e}`);
+      alert(`${t('explorer.alert_dir_error')} ${e}`);
     } finally {
       setLoading(false);
     }
@@ -388,7 +423,7 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ onSetSource, accentC
       setShowNewFolderModal(false);
       setNewFolderName('');
       navigateTo(currentPath, false);
-    } catch (e) { alert(`Falha ao criar pasta: ${e}`); }
+    } catch (e) { alert(`${t('explorer.alert_create_folder')} ${e}`); }
   };
 
   const handleCreateFile = async () => {
@@ -403,7 +438,7 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ onSetSource, accentC
       setNewFileName('');
       setNewFileDefaultExt('');
       navigateTo(currentPath, false);
-    } catch (e) { alert(`Falha ao criar arquivo: ${e}`); }
+    } catch (e) { alert(`${t('explorer.alert_create_file')} ${e}`); }
   };
 
   const openRenameModal = (item: FileItem) => {
@@ -420,7 +455,7 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ onSetSource, accentC
       setRenameTarget(null);
       setNewName('');
       navigateTo(currentPath, false);
-    } catch (e) { alert(`Falha ao renomear: ${e}`); }
+    } catch (e) { alert(`${t('explorer.alert_rename')} ${e}`); }
   };
 
   const executeDelete = async () => {
@@ -432,7 +467,7 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ onSetSource, accentC
       setShowDeleteModal(false);
       navigateTo(currentPath, false);
     } catch (e) { 
-      alert(`Erro na exclusão: ${e}`); 
+      alert(`${t('explorer.alert_delete')} ${e}`); 
       setShowDeleteModal(false);
     }
   };
@@ -446,35 +481,65 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ onSetSource, accentC
       for (const p of clipboard.paths) { await invoke('paste_item', { srcPath: p, destDir: currentPath, cut: clipboard.isCut }); }
       if (clipboard.isCut) setClipboard(null);
       navigateTo(currentPath, false);
-    } catch (e) { alert(`Falha ao colar: ${e}`); }
+    } catch (e) { alert(`${t('explorer.alert_paste')} ${e}`); }
   };
 
-  const handleCompressZip = async () => {
+  const handleCompressZip = () => {
     if (selectedPaths.length === 0) return;
-    let zipName = `Arquivos_Compactados_${Date.now()}.zip`;
+    
+    let defaultName = `Arquivos_Compactados_${Date.now()}.zip`;
     if (selectedPaths.length === 1) {
       const item = items.find(i => i.path === selectedPaths[0]);
       if (item) {
         const baseName = item.is_dir ? item.name : (item.name.includes('.') ? item.name.substring(0, item.name.lastIndexOf('.')) : item.name);
-        zipName = `${baseName}.zip`;
-        const alreadyExists = items.some(i => i.name.toLowerCase() === zipName.toLowerCase());
-        if (alreadyExists) zipName = `${baseName}_${Date.now()}.zip`;
+        defaultName = `${baseName}.zip`;
+        const alreadyExists = items.some(i => i.name.toLowerCase() === defaultName.toLowerCase());
+        if (alreadyExists) defaultName = `${baseName}_${Date.now()}.zip`;
       }
     }
+    
+    setZipFileName(defaultName);
+    setZipEncrypt(false);
+    setZipPassword('');
+    setShowZipPassword(false);
+    setShowZipModal(true);
+  };
+
+  const executeCompressZip = async () => {
+    if (!zipFileName.trim()) return alert(t('explorer.alert_zip_empty'));
+    if (zipEncrypt && !zipPassword.trim()) return alert(t('explorer.alert_zip_pass'));
+
+    let finalZipName = zipFileName.trim();
+    if (!finalZipName.toLowerCase().endsWith('.zip')) {
+       finalZipName += '.zip';
+    }
+
     const separator = currentPath.includes('\\') ? '\\' : '/';
-    const destZip = currentPath.endsWith(separator) ? `${currentPath}${zipName}` : `${currentPath}${separator}${zipName}`;
+    const destZip = currentPath.endsWith(separator) ? `${currentPath}${finalZipName}` : `${currentPath}${separator}${finalZipName}`;
+    
     try {
-      await invoke('compress_items_to_zip', { sourcePaths: selectedPaths, destZip, password: null });
-      alert(`Arquivo "${zipName}" gerado com sucesso.`);
+      await invoke('compress_items_to_zip', { 
+        sourcePaths: selectedPaths, 
+        destZip, 
+        password: zipEncrypt ? zipPassword : null 
+      });
+      
+      setShowZipModal(false);
+      alert(zipEncrypt 
+        ? `${t('explorer.alert_zip_success_1')} "${finalZipName}" ${t('explorer.alert_zip_success_2')}` 
+        : `${t('explorer.alert_zip_success_3')} "${finalZipName}" ${t('explorer.alert_zip_success_4')}`
+      );
       navigateTo(currentPath, false);
-    } catch (e) { alert(`Falha ao compactar: ${e}`); }
+    } catch (e) { 
+      alert(`${t('explorer.alert_zip_fail')} ${e}`); 
+    }
   };
 
   const handleInspectProperties = async (path: string) => {
     try {
       const res = await invoke<FileProperties>('get_file_properties', { path });
       setPropertiesModal(res);
-    } catch (e) { alert(`Erro ao obter propriedades: ${e}`); }
+    } catch (e) { alert(`${t('explorer.alert_props')} ${e}`); }
   };
 
   const isPathFavorite = (path: string) => favorites.some(f => f.path === path);
@@ -497,12 +562,12 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ onSetSource, accentC
     if (!userHomePath) return [];
     const sep = userHomePath.includes('\\') ? '\\' : '/';
     return [
-      { name: 'Área de Trabalho', path: `${userHomePath}${sep}Desktop`, icon: Monitor },
-      { name: 'Downloads', path: `${userHomePath}${sep}Downloads`, icon: Download },
-      { name: 'Documentos', path: `${userHomePath}${sep}Documents`, icon: FileText },
-      { name: 'Imagens', path: `${userHomePath}${sep}Pictures`, icon: ImageIcon },
+      { name: t('explorer.quick_desktop'), path: `${userHomePath}${sep}Desktop`, icon: Monitor },
+      { name: t('explorer.quick_downloads'), path: `${userHomePath}${sep}Downloads`, icon: Download },
+      { name: t('explorer.quick_documents'), path: `${userHomePath}${sep}Documents`, icon: FileText },
+      { name: t('explorer.quick_pictures'), path: `${userHomePath}${sep}Pictures`, icon: ImageIcon },
     ];
-  }, [userHomePath]);
+  }, [userHomePath, t]);
 
   const getFileCategoryIcon = (item: FileItem) => {
     if (item.is_dir) return <Folder size={18} className="text-amber-500 shrink-0" />;
@@ -567,13 +632,14 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ onSetSource, accentC
       <div style={{ width: `${sidebarWidth}px` }} onClick={(e) => e.stopPropagation()} className="shrink-0 bg-white dark:bg-[#1e1e24] p-3 rounded-2xl border border-slate-200 dark:border-[#2e2e34] flex flex-col justify-between shadow-sm overflow-y-auto overflow-x-hidden custom-scrollbar relative">
         <div className="space-y-3.5 pb-2">
           <div className="space-y-1">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block px-1">Unidades e Discos</span>
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block px-1">{t('explorer.drives_title')}</span>
             <div className="space-y-0.5">
               {drives.map((d) => {
                 const isActive = currentPath.toLowerCase() === d.path.toLowerCase();
+                const displayName = translateDriveName(d.name);
                 return (
                   <button key={d.path} onClick={() => navigateTo(d.path)} className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-xl text-xs font-semibold transition-colors ${isActive ? 'bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-[#27272a]'}`}>
-                    <HardDrive size={14} className="shrink-0 text-blue-500" /><span className="truncate">{d.name}</span>
+                    <HardDrive size={14} className="shrink-0 text-blue-500" /><span className="truncate">{displayName}</span>
                   </button>
                 );
               })}
@@ -582,7 +648,7 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ onSetSource, accentC
 
           {systemQuickAccess.length > 0 && (
             <div className="space-y-1 pt-2 border-t border-slate-100 dark:border-[#2e2e34]">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block px-1">Acesso Rápido</span>
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block px-1">{t('explorer.quick_access')}</span>
               <div className="space-y-0.5">
                 {systemQuickAccess.map((link) => {
                   const isActive = currentPath.toLowerCase() === link.path.toLowerCase();
@@ -597,35 +663,18 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ onSetSource, accentC
             </div>
           )}
 
-          {frequentPaths.length > 0 && (
-            <div className="space-y-1 pt-2 border-t border-slate-100 dark:border-[#2e2e34]">
-              <div className="flex items-center gap-1.5 px-1 pb-1">
-                <Flame size={12} className="text-orange-500" /><span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Mais Acessados</span>
-              </div>
-              <div className="space-y-0.5">
-                {frequentPaths.map((fav) => {
-                  const isActive = currentPath.toLowerCase() === fav.path.toLowerCase();
-                  return (
-                    <button key={fav.path} onClick={() => navigateTo(fav.path)} className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl text-xs font-semibold transition-colors ${isActive ? 'bg-orange-50 dark:bg-orange-950/40 text-orange-700 dark:text-orange-300 border border-orange-200 dark:border-orange-900' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-[#27272a]'}`} title={fav.path}>
-                      <div className="flex items-center gap-2 truncate"><Folder size={13} className="text-orange-500 shrink-0" /><span className="truncate">{fav.name}</span></div>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
           {recentPaths.length > 0 && (
             <div className="space-y-1 pt-2 border-t border-slate-100 dark:border-[#2e2e34]">
               <div className="flex items-center gap-1.5 px-1 pb-1">
-                <Clock size={12} className="text-purple-500" /><span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Recentes</span>
+                <Clock size={12} className="text-purple-500" /><span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">{t('explorer.recent')}</span>
               </div>
               <div className="space-y-0.5">
                 {recentPaths.map((rec) => {
                   const isActive = currentPath.toLowerCase() === rec.path.toLowerCase();
+                  const displayName = translateSystemFolderName(rec.name);
                   return (
                     <button key={rec.path} onClick={() => navigateTo(rec.path)} className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-xl text-xs font-semibold transition-colors ${isActive ? 'bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-900' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-[#27272a]'}`} title={rec.path}>
-                      <Folder size={13} className="text-purple-500 shrink-0" /><span className="truncate">{rec.name}</span>
+                      <Folder size={13} className="text-purple-500 shrink-0" /><span className="truncate">{displayName}</span>
                     </button>
                   );
                 })}
@@ -635,21 +684,22 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ onSetSource, accentC
 
           <div className="space-y-1 pt-2 border-t border-slate-100 dark:border-[#2e2e34]">
             <div className="flex items-center justify-between px-1 pb-1">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block flex-1 truncate">Pastas Fixadas</span>
-              <button onClick={toggleCurrentAsFavorite} className="text-slate-400 hover:text-amber-500 transition-colors p-0.5" title={isPathFavorite(currentPath) ? 'Remover dos favoritos' : 'Fixar pasta atual'}>
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block flex-1 truncate">{t('explorer.pinned')}</span>
+              <button onClick={toggleCurrentAsFavorite} className="text-slate-400 hover:text-amber-500 transition-colors p-0.5" title={isPathFavorite(currentPath) ? t('explorer.unpin_tooltip') : t('explorer.pin_tooltip')}>
                 {isPathFavorite(currentPath) ? <Star size={13} className="fill-amber-400 text-amber-400" /> : <Star size={13} />}
               </button>
             </div>
             <div className="space-y-0.5">
               {favorites.length === 0 ? (
-                <p className="text-[11px] text-slate-400 italic px-1">Nenhuma fixa.</p>
+                <p className="text-[11px] text-slate-400 italic px-1">{t('explorer.empty_pinned')}</p>
               ) : (
                 favorites.map((fav) => {
                   const isActive = currentPath.toLowerCase() === fav.path.toLowerCase();
+                  const displayName = translateSystemFolderName(fav.name);
                   return (
                     <div key={fav.path} className={`group flex items-center justify-between px-2.5 py-1.5 rounded-xl text-xs font-semibold transition-colors ${isActive ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-900' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-[#27272a]'}`}>
-                      <button onClick={() => navigateTo(fav.path)} className="flex items-center gap-2 truncate flex-1 text-left"><Folder size={13} className="text-amber-500 shrink-0" /><span className="truncate">{fav.name}</span></button>
-                      <button onClick={(e) => { e.stopPropagation(); setFavorites(prev => prev.filter(f => f.path !== fav.path)); }} className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-500 p-0.5" title="Desafixar"><X size={12} /></button>
+                      <button onClick={() => navigateTo(fav.path)} className="flex items-center gap-2 truncate flex-1 text-left"><Folder size={13} className="text-amber-500 shrink-0" /><span className="truncate">{displayName}</span></button>
+                      <button onClick={(e) => { e.stopPropagation(); setFavorites(prev => prev.filter(f => f.path !== fav.path)); }} className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-500 p-0.5" title={t('explorer.unpin_tooltip')}><X size={12} /></button>
                     </div>
                   );
                 })
@@ -659,8 +709,8 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ onSetSource, accentC
         </div>
 
         {onSetSource && currentPath && (
-          <button onClick={() => onSetSource(currentPath)} className="w-full py-2 px-2.5 rounded-xl text-white text-xs font-bold shadow-sm flex items-center justify-center gap-1.5 transition-all active:scale-95 shrink-0 mt-2" style={{ backgroundColor: accentColor }} title="Usar pasta atual no Construtor de Regras">
-            <FolderInput size={14} /><span className="truncate">Usar como origem de regra</span>
+          <button onClick={() => onSetSource(currentPath)} className="w-full py-2 px-2.5 rounded-xl text-white text-xs font-bold shadow-sm flex items-center justify-center gap-1.5 transition-all active:scale-95 shrink-0 mt-2" style={{ backgroundColor: accentColor }} title={t('explorer.use_as_source')}>
+            <FolderInput size={14} /><span className="truncate">{t('explorer.use_as_source')}</span>
           </button>
         )}
 
@@ -697,7 +747,7 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ onSetSource, accentC
           </div>
           <div className="relative w-48 shrink-0">
             <Search size={13} className="absolute left-2.5 top-2.5 text-slate-400" />
-            <input type="text" placeholder="Pesquisar nesta pasta..." value={searchFilter} onChange={(e) => setSearchFilter(e.target.value)} className="w-full pl-8 pr-2.5 py-1.5 text-xs bg-slate-50 dark:bg-[#18181b] border border-slate-200 dark:border-[#2e2e34] rounded-xl text-slate-800 dark:text-white outline-none" />
+            <input type="text" placeholder={t('explorer.search_ph')} value={searchFilter} onChange={(e) => setSearchFilter(e.target.value)} className="w-full pl-8 pr-2.5 py-1.5 text-xs bg-slate-50 dark:bg-[#18181b] border border-slate-200 dark:border-[#2e2e34] rounded-xl text-slate-800 dark:text-white outline-none" />
           </div>
         </div>
 
@@ -706,39 +756,39 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ onSetSource, accentC
           <div className="flex items-center gap-1.5 flex-wrap relative">
             <div className="relative">
               <button id="btn-novo-dropdown" onClick={(e) => { e.stopPropagation(); setShowNewDropdown(prev => !prev); }} className="px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-[#27272a] hover:bg-slate-200 text-slate-700 dark:text-slate-200 font-bold flex items-center gap-1.5 border border-slate-200 dark:border-[#383840] transition-colors">
-                <Plus size={14} /> Novo <ChevronDown size={12} />
+                <Plus size={14} /> {t('explorer.btn_new')} <ChevronDown size={12} />
               </button>
 
               {showNewDropdown && (
                 <div id="custom-new-dropdown" onClick={(e) => e.stopPropagation()} className="absolute left-0 top-full mt-1.5 w-48 bg-white dark:bg-[#202024] rounded-2xl border border-slate-200 dark:border-[#333338] shadow-xl p-1.5 z-30 space-y-0.5 text-xs">
-                  <button onClick={() => { setShowNewDropdown(false); setShowNewFolderModal(true); }} className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl hover:bg-slate-100 dark:hover:bg-[#2b2b32] text-left font-semibold text-slate-700 dark:text-slate-200"><Folder size={14} className="text-amber-500" /><span>Nova Pasta</span></button>
+                  <button onClick={() => { setShowNewDropdown(false); setShowNewFolderModal(true); }} className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl hover:bg-slate-100 dark:hover:bg-[#2b2b32] text-left font-semibold text-slate-700 dark:text-slate-200"><Folder size={14} className="text-amber-500" /><span>{t('explorer.new_folder')}</span></button>
                   <div className="h-[1px] bg-slate-100 dark:bg-[#2e2e34] my-1" />
-                  <button onClick={() => openNewFileModal('.txt')} className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl hover:bg-slate-100 dark:hover:bg-[#2b2b32] text-left font-semibold text-slate-700 dark:text-slate-200"><FileText size={14} className="text-blue-500" /><span>Arquivo de Texto (.txt)</span></button>
-                  <button onClick={() => openNewFileModal('.py')} className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl hover:bg-slate-100 dark:hover:bg-[#2b2b32] text-left font-semibold text-slate-700 dark:text-slate-200"><FileCode size={14} className="text-cyan-500" /><span>Script Python (.py)</span></button>
-                  <button onClick={() => openNewFileModal('.json')} className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl hover:bg-slate-100 dark:hover:bg-[#2b2b32] text-left font-semibold text-slate-700 dark:text-slate-200"><FileCode size={14} className="text-emerald-500" /><span>Arquivo JSON (.json)</span></button>
+                  <button onClick={() => openNewFileModal('.txt')} className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl hover:bg-slate-100 dark:hover:bg-[#2b2b32] text-left font-semibold text-slate-700 dark:text-slate-200"><FileText size={14} className="text-blue-500" /><span>{t('explorer.new_txt')}</span></button>
+                  <button onClick={() => openNewFileModal('.py')} className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl hover:bg-slate-100 dark:hover:bg-[#2b2b32] text-left font-semibold text-slate-700 dark:text-slate-200"><FileCode size={14} className="text-cyan-500" /><span>{t('explorer.new_py')}</span></button>
+                  <button onClick={() => openNewFileModal('.json')} className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl hover:bg-slate-100 dark:hover:bg-[#2b2b32] text-left font-semibold text-slate-700 dark:text-slate-200"><FileCode size={14} className="text-emerald-500" /><span>{t('explorer.new_json')}</span></button>
                   <div className="h-[1px] bg-slate-100 dark:bg-[#2e2e34] my-1" />
-                  <button onClick={() => openNewFileModal('')} className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl hover:bg-slate-100 dark:hover:bg-[#2b2b32] text-left font-semibold text-slate-700 dark:text-slate-200"><FileIcon size={14} className="text-slate-400" /><span>Outro formato...</span></button>
+                  <button onClick={() => openNewFileModal('')} className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl hover:bg-slate-100 dark:hover:bg-[#2b2b32] text-left font-semibold text-slate-700 dark:text-slate-200"><FileIcon size={14} className="text-slate-400" /><span>{t('explorer.new_other')}</span></button>
                 </div>
               )}
             </div>
 
             <div className="h-4 w-[1px] bg-slate-200 dark:bg-[#333338] mx-1" />
-            <button onClick={handleCopy} disabled={selectedPaths.length === 0} className="p-1.5 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-[#27272a] disabled:opacity-30" title="Copiar"><Copy size={15} /></button>
-            <button onClick={handleCut} disabled={selectedPaths.length === 0} className="p-1.5 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-[#27272a] disabled:opacity-30" title="Recortar"><Scissors size={15} /></button>
-            <button onClick={handlePaste} disabled={!clipboard} className={`p-1.5 rounded-xl transition-colors ${clipboard ? 'text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/40' : 'text-slate-400 opacity-30 cursor-not-allowed'}`} title="Colar"><ClipboardPaste size={15} /></button>
+            <button onClick={handleCopy} disabled={selectedPaths.length === 0} className="p-1.5 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-[#27272a] disabled:opacity-30" title={t('explorer.tooltip_copy')}><Copy size={15} /></button>
+            <button onClick={handleCut} disabled={selectedPaths.length === 0} className="p-1.5 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-[#27272a] disabled:opacity-30" title={t('explorer.tooltip_cut')}><Scissors size={15} /></button>
+            <button onClick={handlePaste} disabled={!clipboard} className={`p-1.5 rounded-xl transition-colors ${clipboard ? 'text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/40' : 'text-slate-400 opacity-30 cursor-not-allowed'}`} title={t('explorer.tooltip_paste')}><ClipboardPaste size={15} /></button>
 
             <div className="h-4 w-[1px] bg-slate-200 dark:bg-[#333338] mx-1" />
-            <button onClick={() => { if (selectedPaths.length === 1) { const target = items.find(i => i.path === selectedPaths[0]); if (target) openRenameModal(target); } }} disabled={selectedPaths.length !== 1} className="p-1.5 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-[#27272a] disabled:opacity-30" title="Renomear"><Edit3 size={15} /></button>
-            <button onClick={() => setShowDeleteModal(true)} disabled={selectedPaths.length === 0} className="p-1.5 rounded-xl text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 disabled:opacity-30" title="Excluir"><Trash2 size={15} /></button>
-            <button onClick={handleCompressZip} disabled={selectedPaths.length === 0} className="p-1.5 rounded-xl text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950/30 disabled:opacity-30" title="Compactar Selecionados em .ZIP"><FileArchive size={15} /></button>
-            <button onClick={() => { if (selectedPaths[0]) handleInspectProperties(selectedPaths[0]); }} disabled={selectedPaths.length !== 1} className="p-1.5 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-[#27272a] disabled:opacity-30" title="Propriedades"><Info size={15} /></button>
+            <button onClick={() => { if (selectedPaths.length === 1) { const target = items.find(i => i.path === selectedPaths[0]); if (target) openRenameModal(target); } }} disabled={selectedPaths.length !== 1} className="p-1.5 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-[#27272a] disabled:opacity-30" title={t('explorer.tooltip_rename')}><Edit3 size={15} /></button>
+            <button onClick={() => setShowDeleteModal(true)} disabled={selectedPaths.length === 0} className="p-1.5 rounded-xl text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 disabled:opacity-30" title={t('explorer.tooltip_delete')}><Trash2 size={15} /></button>
+            <button onClick={handleCompressZip} disabled={selectedPaths.length === 0} className="p-1.5 rounded-xl text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950/30 disabled:opacity-30" title={t('explorer.tooltip_zip')}><FileArchive size={15} /></button>
+            <button onClick={() => { if (selectedPaths[0]) handleInspectProperties(selectedPaths[0]); }} disabled={selectedPaths.length !== 1} className="p-1.5 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-[#27272a] disabled:opacity-30" title={t('explorer.tooltip_props')}><Info size={15} /></button>
           </div>
 
           <div className="flex items-center gap-2">
-            <span className="text-[11px] font-mono text-slate-400">{filteredAndSortedItems.length} itens {selectedPaths.length > 0 && `(${selectedPaths.length} sel)`}</span>
+            <span className="text-[11px] font-mono text-slate-400">{filteredAndSortedItems.length} {t('explorer.items_count')} {selectedPaths.length > 0 && `(${selectedPaths.length} ${t('explorer.sel_count')})`}</span>
             <div className="flex items-center bg-slate-100 dark:bg-[#27272a] p-0.5 rounded-xl border border-slate-200 dark:border-[#383840]">
-              <button onClick={() => setViewMode('list')} className={`p-1.5 rounded-lg transition-colors ${viewMode === 'list' ? 'bg-white dark:bg-[#18181b] text-blue-600 shadow-xs' : 'text-slate-400 hover:text-slate-600'}`} title="Lista"><LayoutList size={14} /></button>
-              <button onClick={() => setViewMode('grid')} className={`p-1.5 rounded-lg transition-colors ${viewMode === 'grid' ? 'bg-white dark:bg-[#18181b] text-blue-600 shadow-xs' : 'text-slate-400 hover:text-slate-600'}`} title="Grade"><LayoutGrid size={14} /></button>
+              <button onClick={() => setViewMode('list')} className={`p-1.5 rounded-lg transition-colors ${viewMode === 'list' ? 'bg-white dark:bg-[#18181b] text-blue-600 shadow-xs' : 'text-slate-400 hover:text-slate-600'}`} title={t('explorer.view_list')}><LayoutList size={14} /></button>
+              <button onClick={() => setViewMode('grid')} className={`p-1.5 rounded-lg transition-colors ${viewMode === 'grid' ? 'bg-white dark:bg-[#18181b] text-blue-600 shadow-xs' : 'text-slate-400 hover:text-slate-600'}`} title={t('explorer.view_grid')}><LayoutGrid size={14} /></button>
             </div>
           </div>
         </div>
@@ -751,9 +801,9 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ onSetSource, accentC
           className="flex-1 overflow-y-auto border border-slate-100 dark:border-[#2e2e34] rounded-xl bg-slate-50/50 dark:bg-[#18181b]/50 custom-scrollbar relative flex flex-col"
         >
           {loading ? (
-            <div className="flex-1 flex items-center justify-center text-xs text-slate-400 gap-2"><RefreshCw size={16} className="animate-spin text-blue-500" /><span>Lendo diretório...</span></div>
+            <div className="flex-1 flex items-center justify-center text-xs text-slate-400 gap-2"><RefreshCw size={16} className="animate-spin text-blue-500" /><span>{t('explorer.loading')}</span></div>
           ) : filteredAndSortedItems.length === 0 ? (
-            <div className="flex-1 flex items-center justify-center text-xs text-slate-400 italic">Esta pasta está vazia.</div>
+            <div className="flex-1 flex items-center justify-center text-xs text-slate-400 italic">{t('explorer.empty_folder')}</div>
           ) : viewMode === 'list' ? (
             
             <div className="flex-1 flex flex-col relative w-full text-xs">
@@ -762,19 +812,19 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ onSetSource, accentC
                   <input type="checkbox" className="cursor-pointer rounded border-slate-300 text-blue-600 focus:ring-blue-500" checked={isAllSelected} onChange={handleSelectAll} onClick={(e) => e.stopPropagation()} />
                 </div>
                 <div style={{ width: colWidths.name }} className="p-2.5 pl-4 relative group shrink-0">
-                  <div onClick={() => handleHeaderSort('name')} className="flex items-center gap-1 cursor-pointer hover:text-blue-600 truncate"><span>Nome</span>{sortField === 'name' && <ArrowUpDown size={11} className="text-blue-500 shrink-0" />}</div>
+                  <div onClick={() => handleHeaderSort('name')} className="flex items-center gap-1 cursor-pointer hover:text-blue-600 truncate"><span>{t('explorer.col_name')}</span>{sortField === 'name' && <ArrowUpDown size={11} className="text-blue-500 shrink-0" />}</div>
                   <div onMouseDown={(e) => startColResizing('name', e)} onDoubleClick={() => resetColWidth('name')} className="absolute right-0 top-0 w-1.5 h-full cursor-col-resize hover:bg-blue-500 active:bg-blue-600 transition-colors" />
                 </div>
                 <div style={{ width: colWidths.size }} className="p-2.5 relative group shrink-0">
-                  <div onClick={() => handleHeaderSort('size')} className="flex items-center gap-1 cursor-pointer hover:text-blue-600 truncate"><span>Tamanho</span>{sortField === 'size' && <ArrowUpDown size={11} className="text-blue-500 shrink-0" />}</div>
+                  <div onClick={() => handleHeaderSort('size')} className="flex items-center gap-1 cursor-pointer hover:text-blue-600 truncate"><span>{t('explorer.col_size')}</span>{sortField === 'size' && <ArrowUpDown size={11} className="text-blue-500 shrink-0" />}</div>
                   <div onMouseDown={(e) => startColResizing('size', e)} onDoubleClick={() => resetColWidth('size')} className="absolute right-0 top-0 w-1.5 h-full cursor-col-resize hover:bg-blue-500 active:bg-blue-600 transition-colors" />
                 </div>
                 <div style={{ width: colWidths.type }} className="p-2.5 relative group shrink-0">
-                  <div onClick={() => handleHeaderSort('type')} className="flex items-center gap-1 cursor-pointer hover:text-blue-600 truncate"><span>Tipo</span>{sortField === 'type' && <ArrowUpDown size={11} className="text-blue-500 shrink-0" />}</div>
+                  <div onClick={() => handleHeaderSort('type')} className="flex items-center gap-1 cursor-pointer hover:text-blue-600 truncate"><span>{t('explorer.col_type')}</span>{sortField === 'type' && <ArrowUpDown size={11} className="text-blue-500 shrink-0" />}</div>
                   <div onMouseDown={(e) => startColResizing('type', e)} onDoubleClick={() => resetColWidth('type')} className="absolute right-0 top-0 w-1.5 h-full cursor-col-resize hover:bg-blue-500 active:bg-blue-600 transition-colors" />
                 </div>
                 <div style={{ width: colWidths.date }} className="p-2.5 relative group shrink-0">
-                  <div onClick={() => handleHeaderSort('date')} className="flex items-center gap-1 cursor-pointer hover:text-blue-600 truncate"><span>Modificado em</span>{sortField === 'date' && <ArrowUpDown size={11} className="text-blue-500 shrink-0" />}</div>
+                  <div onClick={() => handleHeaderSort('date')} className="flex items-center gap-1 cursor-pointer hover:text-blue-600 truncate"><span>{t('explorer.col_date')}</span>{sortField === 'date' && <ArrowUpDown size={11} className="text-blue-500 shrink-0" />}</div>
                   <div onMouseDown={(e) => startColResizing('date', e)} onDoubleClick={() => resetColWidth('date')} className="absolute right-0 top-0 w-1.5 h-full cursor-col-resize hover:bg-blue-500 active:bg-blue-600 transition-colors" />
                 </div>
                 <div className="flex-1" />
@@ -802,7 +852,7 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ onSetSource, accentC
                         {getFileCategoryIcon(item)}<span className="truncate" title={item.name}>{item.name}</span>
                       </div>
                       <div style={{ width: colWidths.size }} className="p-2 font-mono text-[11px] text-slate-400 truncate shrink-0">{item.is_dir ? '--' : (item.size_formatted || `${item.size_bytes || 0} B`)}</div>
-                      <div style={{ width: colWidths.type }} className="p-2 font-mono text-[10px] uppercase text-slate-400 truncate shrink-0">{item.is_dir ? 'Pasta' : (item.extension || 'Arquivo')}</div>
+                      <div style={{ width: colWidths.type }} className="p-2 font-mono text-[10px] uppercase text-slate-400 truncate shrink-0">{item.is_dir ? t('explorer.type_folder') : (item.extension || t('explorer.type_file'))}</div>
                       <div style={{ width: colWidths.date }} className="p-2 font-mono text-[11px] text-slate-400 truncate shrink-0">{item.last_modified || item.modified_at || '--'}</div>
                     </div>
                   );
@@ -835,7 +885,7 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ onSetSource, accentC
                     <div className="p-2 rounded-xl bg-slate-100 dark:bg-[#25252b]">{getFileCategoryIcon(item)}</div>
                     <div className="w-full">
                       <p className="text-xs font-semibold text-slate-800 dark:text-white truncate w-full" title={item.name}>{item.name}</p>
-                      <span className="text-[10px] text-slate-400 font-mono block truncate">{item.is_dir ? 'Pasta' : (item.size_formatted || `${item.size_bytes} B`)}</span>
+                      <span className="text-[10px] text-slate-400 font-mono block truncate">{item.is_dir ? t('explorer.type_folder') : (item.size_formatted || `${item.size_bytes} B`)}</span>
                     </div>
                   </div>
                 );
@@ -845,20 +895,61 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ onSetSource, accentC
         </div>
       </div>
 
-      {/* MODAL: EXCLUSÃO SEGURA */}
+      {/* MODAIS DO EXPLORADOR */}
       {showDeleteModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-xs z-50 flex items-center justify-center p-4 z-[9999]">
           <div className="bg-white dark:bg-[#202023] w-full max-w-sm rounded-3xl p-6 border border-slate-200 dark:border-[#333338] shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-100">
             <div className="flex items-center gap-2.5 text-red-500">
               <AlertTriangle size={20} />
-              <h3 className="text-sm font-bold uppercase tracking-wider text-slate-800 dark:text-white">Confirmar Exclusão</h3>
+              <h3 className="text-sm font-bold uppercase tracking-wider text-slate-800 dark:text-white">{t('explorer.modal_del_title')}</h3>
             </div>
             <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
-              Você está prestes a excluir permanentemente <strong className="text-red-500">{selectedPaths.length === 1 ? '1 item' : `${selectedPaths.length} itens`}</strong>. Esta ação não poderá ser desfeita. Tem certeza de que deseja continuar?
+              {t('explorer.modal_del_desc_1')} <strong className="text-red-500">{selectedPaths.length === 1 ? t('explorer.modal_del_item') : `${selectedPaths.length} ${t('explorer.modal_del_items')}`}</strong>{t('explorer.modal_del_desc_2')}
             </p>
             <div className="flex justify-end gap-2 pt-2">
-              <button onClick={() => setShowDeleteModal(false)} className="px-4 py-2 text-xs font-semibold text-slate-400 hover:text-slate-600 transition-colors">Cancelar</button>
-              <button onClick={executeDelete} className="px-5 py-2 rounded-xl bg-red-500 hover:bg-red-600 text-white text-xs font-bold shadow-sm transition-colors">Sim, Excluir</button>
+              <button onClick={() => setShowDeleteModal(false)} className="px-4 py-2 text-xs font-semibold text-slate-400 hover:text-slate-600 transition-colors">{t('explorer.btn_cancel')}</button>
+              <button onClick={executeDelete} className="px-5 py-2 rounded-xl bg-red-500 hover:bg-red-600 text-white text-xs font-bold shadow-sm transition-colors">{t('explorer.btn_yes_delete')}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ⚡ NOVO MODAL DE COMPACTAÇÃO (ZIP) */}
+      {showZipModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs z-50 flex items-center justify-center p-4 z-[9999]">
+          <div className="bg-white dark:bg-[#202023] w-full max-w-sm rounded-3xl p-6 border border-slate-200 dark:border-[#333338] shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-100">
+            <h3 className="text-xs font-bold text-slate-800 dark:text-white uppercase tracking-wider flex items-center gap-2">
+              <FileArchive size={16} className="text-amber-500" /> {t('explorer.modal_zip_title')}
+            </h3>
+            
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">{t('explorer.modal_zip_name')}</label>
+              <input type="text" value={zipFileName} onChange={(e) => setZipFileName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && executeCompressZip()} autoFocus className="w-full px-3.5 py-2.5 text-xs bg-slate-50 dark:bg-[#18181b] border border-slate-200 dark:border-[#333338] rounded-xl text-slate-800 dark:text-white font-medium outline-none" />
+            </div>
+
+            <div className="p-3.5 bg-slate-50 dark:bg-[#18181b] rounded-xl border border-slate-200 dark:border-[#2e2e34]">
+              <div className="flex items-center justify-between">
+                <div>
+                  <span className="text-[11px] font-bold flex items-center gap-2 text-slate-800 dark:text-white"><Lock size={15} className="text-emerald-500" /> {t('explorer.modal_zip_protect')}</span>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input type="checkbox" checked={zipEncrypt} onChange={(e) => setZipEncrypt(e.target.checked)} className="sr-only peer" />
+                  <div className="w-9 h-5 bg-slate-300 peer-focus:outline-none rounded-full peer dark:bg-[#333338] peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-500"></div>
+                </label>
+              </div>
+              {zipEncrypt && (
+                <div className="mt-3 pt-3 border-t border-slate-200 dark:border-[#2d2d34] relative">
+                  <input type={showZipPassword ? "text" : "password"} placeholder={t('explorer.modal_zip_pass_ph')} value={zipPassword} onChange={(e) => setZipPassword(e.target.value)} className="w-full pl-3 pr-10 py-2 text-xs bg-white dark:bg-[#202024] border border-slate-200 dark:border-[#383840] rounded-xl outline-none font-mono focus:ring-1 focus:ring-emerald-500 transition-shadow" />
+                  <button type="button" onClick={() => setShowZipPassword(!showZipPassword)} className="absolute right-3 top-[22px] text-slate-400 hover:text-emerald-500 transition-colors">
+                    {showZipPassword ? <EyeOff size={15} /> : <Eye size={15} />}
+                  </button>
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <button onClick={() => setShowZipModal(false)} className="px-4 py-2 text-xs font-semibold text-slate-400 hover:text-slate-600 transition-colors">{t('explorer.btn_cancel')}</button>
+              <button onClick={executeCompressZip} className="px-5 py-2 rounded-xl text-white text-xs font-bold shadow-sm transition-transform active:scale-95" style={{ backgroundColor: accentColor }}>{t('explorer.btn_compress')}</button>
             </div>
           </div>
         </div>
@@ -875,10 +966,9 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ onSetSource, accentC
         >
           <button onClick={() => { setContextMenu(prev => ({ ...prev, visible: false })); handleItemDoubleClick(contextMenu.targetItem!); }} className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl hover:bg-slate-100 dark:hover:bg-[#2b2b32] font-semibold">
             {contextMenu.targetItem?.is_dir ? <Folder size={14} className="text-blue-500" /> : <FileIcon size={14} className="text-blue-500" />}
-            <span>{contextMenu.targetItem?.is_dir ? 'Abrir Pasta' : 'Abrir Arquivo'}</span>
+            <span>{contextMenu.targetItem?.is_dir ? t('explorer.ctx_open_folder') : t('explorer.ctx_open_file')}</span>
           </button>
           
-          {/* ⚡ BOTÃO ABRIR COM... (só exibe se for arquivo) */}
           {!contextMenu.targetItem?.is_dir && (
             <button onClick={async () => { 
               setContextMenu(prev => ({ ...prev, visible: false })); 
@@ -886,97 +976,97 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ onSetSource, accentC
               catch (e) { alert(e); }
             }} className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl hover:bg-slate-100 dark:hover:bg-[#2b2b32] font-semibold">
               <LayoutGrid size={14} className="text-purple-500" />
-              <span>Abrir com...</span>
+              <span>{t('explorer.ctx_open_with')}</span>
             </button>
           )}
           
           {onSetSource && contextMenu.targetItem?.is_dir && (
             <button onClick={() => { setContextMenu(prev => ({ ...prev, visible: false })); onSetSource(contextMenu.targetItem!.path); }} className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl hover:bg-slate-100 dark:hover:bg-[#2b2b32] font-semibold text-blue-600 dark:text-blue-400">
-              <FolderInput size={14} /><span>Usar como origem de regra</span>
+              <FolderInput size={14} /><span>{t('explorer.ctx_use_source')}</span>
             </button>
           )}
           
           {contextMenu.targetItem?.is_dir && (
             <button onClick={() => { setContextMenu(prev => ({ ...prev, visible: false })); toggleFavorite(contextMenu.targetItem!); }} className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl hover:bg-slate-100 dark:hover:bg-[#2b2b32]">
-              <Star size={14} className="text-amber-500" /><span>{isPathFavorite(contextMenu.targetItem.path) ? 'Desafixar das Pastas' : 'Fixar nas Pastas'}</span>
+              <Star size={14} className="text-amber-500" /><span>{isPathFavorite(contextMenu.targetItem.path) ? t('explorer.ctx_unpin') : t('explorer.ctx_pin')}</span>
             </button>
           )}
           
           <div className="h-[1px] bg-slate-100 dark:bg-[#2e2e34] my-1" />
-          <button onClick={() => { setContextMenu(prev => ({ ...prev, visible: false })); handleCopy(); }} className="w-full flex items-center gap-2.5 px-3 py-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-[#2b2b32]"><Copy size={14} /><span>Copiar</span></button>
-          <button onClick={() => { setContextMenu(prev => ({ ...prev, visible: false })); handleCut(); }} className="w-full flex items-center gap-2.5 px-3 py-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-[#2b2b32]"><Scissors size={14} /><span>Recortar</span></button>
-          <button onClick={() => { setContextMenu(prev => ({ ...prev, visible: false })); openRenameModal(contextMenu.targetItem!); }} className="w-full flex items-center gap-2.5 px-3 py-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-[#2b2b32]"><Edit3 size={14} /><span>Renomear</span></button>
-          <button onClick={() => { setContextMenu(prev => ({ ...prev, visible: false })); handleCompressZip(); }} className="w-full flex items-center gap-2.5 px-3 py-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-[#2b2b32]"><FileArchive size={14} className="text-amber-500" /><span>Compactar (.ZIP)</span></button>
-          <button onClick={() => { setContextMenu(prev => ({ ...prev, visible: false })); setShowDeleteModal(true); }} className="w-full flex items-center gap-2.5 px-3 py-1.5 rounded-xl hover:bg-red-50 dark:hover:bg-red-950/40 text-red-600 font-semibold"><Trash2 size={14} /><span>Excluir</span></button>
+          <button onClick={() => { setContextMenu(prev => ({ ...prev, visible: false })); handleCopy(); }} className="w-full flex items-center gap-2.5 px-3 py-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-[#2b2b32]"><Copy size={14} /><span>{t('explorer.ctx_copy')}</span></button>
+          <button onClick={() => { setContextMenu(prev => ({ ...prev, visible: false })); handleCut(); }} className="w-full flex items-center gap-2.5 px-3 py-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-[#2b2b32]"><Scissors size={14} /><span>{t('explorer.ctx_cut')}</span></button>
+          <button onClick={() => { setContextMenu(prev => ({ ...prev, visible: false })); openRenameModal(contextMenu.targetItem!); }} className="w-full flex items-center gap-2.5 px-3 py-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-[#2b2b32]"><Edit3 size={14} /><span>{t('explorer.ctx_rename')}</span></button>
+          <button onClick={() => { setContextMenu(prev => ({ ...prev, visible: false })); handleCompressZip(); }} className="w-full flex items-center gap-2.5 px-3 py-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-[#2b2b32]"><FileArchive size={14} className="text-amber-500" /><span>{t('explorer.ctx_zip')}</span></button>
+          <button onClick={() => { setContextMenu(prev => ({ ...prev, visible: false })); setShowDeleteModal(true); }} className="w-full flex items-center gap-2.5 px-3 py-1.5 rounded-xl hover:bg-red-50 dark:hover:bg-red-950/40 text-red-600 font-semibold"><Trash2 size={14} /><span>{t('explorer.ctx_delete')}</span></button>
           <div className="h-[1px] bg-slate-100 dark:bg-[#2e2e34] my-1" />
-          <button onClick={() => { setContextMenu(prev => ({ ...prev, visible: false })); handleInspectProperties(contextMenu.targetItem!.path); }} className="w-full flex items-center gap-2.5 px-3 py-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-[#2b2b32]"><Info size={14} /><span>Propriedades</span></button>
+          <button onClick={() => { setContextMenu(prev => ({ ...prev, visible: false })); handleInspectProperties(contextMenu.targetItem!.path); }} className="w-full flex items-center gap-2.5 px-3 py-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-[#2b2b32]"><Info size={14} /><span>{t('explorer.ctx_props')}</span></button>
         </div>
       )}
 
       {/* OUTROS MODAIS */}
       {showNewFolderModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs z-50 flex items-center justify-center p-4 z-[9999]">
           <div className="bg-white dark:bg-[#202023] w-full max-w-sm rounded-3xl p-6 border border-slate-200 dark:border-[#333338] shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-100">
-            <h3 className="text-xs font-bold text-slate-800 dark:text-white uppercase tracking-wider">Criar Nova Pasta</h3>
-            <input type="text" placeholder="Nome da pasta..." value={newFolderName} onChange={(e) => setNewFolderName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleCreateFolder()} autoFocus className="w-full px-3.5 py-2.5 text-xs bg-slate-50 dark:bg-[#18181b] border border-slate-200 dark:border-[#333338] rounded-xl text-slate-800 dark:text-white font-medium outline-none" />
+            <h3 className="text-xs font-bold text-slate-800 dark:text-white uppercase tracking-wider">{t('explorer.modal_folder_title')}</h3>
+            <input type="text" placeholder={t('explorer.modal_folder_ph')} value={newFolderName} onChange={(e) => setNewFolderName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleCreateFolder()} autoFocus className="w-full px-3.5 py-2.5 text-xs bg-slate-50 dark:bg-[#18181b] border border-slate-200 dark:border-[#333338] rounded-xl text-slate-800 dark:text-white font-medium outline-none" />
             <div className="flex justify-end gap-2 pt-2">
-              <button onClick={() => setShowNewFolderModal(false)} className="px-4 py-2 text-xs font-semibold text-slate-400 hover:text-slate-600">Cancelar</button>
-              <button onClick={handleCreateFolder} className="px-5 py-2 rounded-xl text-white text-xs font-bold shadow-sm" style={{ backgroundColor: accentColor }}>Criar Pasta</button>
+              <button onClick={() => setShowNewFolderModal(false)} className="px-4 py-2 text-xs font-semibold text-slate-400 hover:text-slate-600">{t('explorer.btn_cancel')}</button>
+              <button onClick={handleCreateFolder} className="px-5 py-2 rounded-xl text-white text-xs font-bold shadow-sm" style={{ backgroundColor: accentColor }}>{t('explorer.btn_create_folder')}</button>
             </div>
           </div>
         </div>
       )}
 
       {showNewFileModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs z-50 flex items-center justify-center p-4 z-[9999]">
           <div className="bg-white dark:bg-[#202023] w-full max-w-sm rounded-3xl p-6 border border-slate-200 dark:border-[#333338] shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-100">
             <h3 className="text-xs font-bold text-slate-800 dark:text-white uppercase tracking-wider">
-              {newFileDefaultExt ? `Criar Arquivo ${newFileDefaultExt}` : 'Criar Novo Arquivo'}
+              {newFileDefaultExt ? `${t('explorer.modal_file_title_1')} ${newFileDefaultExt}` : t('explorer.modal_file_title_2')}
             </h3>
             <div className="space-y-1">
-              <input type="text" placeholder={newFileDefaultExt ? `Nome (ex: dados${newFileDefaultExt})` : "Nome completo com extensão (ex: script.bat)"} value={newFileName} onChange={(e) => setNewFileName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleCreateFile()} autoFocus className="w-full px-3.5 py-2.5 text-xs bg-slate-50 dark:bg-[#18181b] border border-slate-200 dark:border-[#333338] rounded-xl text-slate-800 dark:text-white font-medium outline-none" />
-              {!newFileDefaultExt && <p className="text-[10px] text-slate-400 px-1">Lembre-se de digitar a extensão desejada (ex: .json, .csv, .env)</p>}
+              <input type="text" placeholder={newFileDefaultExt ? `${t('explorer.modal_file_ph_1')}${newFileDefaultExt})` : t('explorer.modal_file_ph_2')} value={newFileName} onChange={(e) => setNewFileName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleCreateFile()} autoFocus className="w-full px-3.5 py-2.5 text-xs bg-slate-50 dark:bg-[#18181b] border border-slate-200 dark:border-[#333338] rounded-xl text-slate-800 dark:text-white font-medium outline-none" />
+              {!newFileDefaultExt && <p className="text-[10px] text-slate-400 px-1">{t('explorer.modal_file_hint')}</p>}
             </div>
             <div className="flex justify-end gap-2 pt-2">
-              <button onClick={() => setShowNewFileModal(false)} className="px-4 py-2 text-xs font-semibold text-slate-400 hover:text-slate-600">Cancelar</button>
-              <button onClick={handleCreateFile} className="px-5 py-2 rounded-xl text-white text-xs font-bold shadow-sm" style={{ backgroundColor: accentColor }}>Criar Arquivo</button>
+              <button onClick={() => setShowNewFileModal(false)} className="px-4 py-2 text-xs font-semibold text-slate-400 hover:text-slate-600">{t('explorer.btn_cancel')}</button>
+              <button onClick={handleCreateFile} className="px-5 py-2 rounded-xl text-white text-xs font-bold shadow-sm" style={{ backgroundColor: accentColor }}>{t('explorer.btn_create_file')}</button>
             </div>
           </div>
         </div>
       )}
 
       {showRenameModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs z-50 flex items-center justify-center p-4 z-[9999]">
           <div className="bg-white dark:bg-[#202023] w-full max-w-sm rounded-3xl p-6 border border-slate-200 dark:border-[#333338] shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-100">
-            <h3 className="text-xs font-bold text-slate-800 dark:text-white uppercase tracking-wider">Renomear</h3>
+            <h3 className="text-xs font-bold text-slate-800 dark:text-white uppercase tracking-wider">{t('explorer.modal_rename_title')}</h3>
             <input type="text" value={newName} onChange={(e) => setNewName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleRename()} autoFocus className="w-full px-3.5 py-2.5 text-xs bg-slate-50 dark:bg-[#18181b] border border-slate-200 dark:border-[#333338] rounded-xl text-slate-800 dark:text-white font-medium outline-none" />
             <div className="flex justify-end gap-2 pt-2">
-              <button onClick={() => setShowRenameModal(false)} className="px-4 py-2 text-xs font-semibold text-slate-400 hover:text-slate-600">Cancelar</button>
-              <button onClick={handleRename} className="px-5 py-2 rounded-xl text-white text-xs font-bold shadow-sm" style={{ backgroundColor: accentColor }}>Salvar</button>
+              <button onClick={() => setShowRenameModal(false)} className="px-4 py-2 text-xs font-semibold text-slate-400 hover:text-slate-600">{t('explorer.btn_cancel')}</button>
+              <button onClick={handleRename} className="px-5 py-2 rounded-xl text-white text-xs font-bold shadow-sm" style={{ backgroundColor: accentColor }}>{t('explorer.btn_save')}</button>
             </div>
           </div>
         </div>
       )}
 
       {propertiesModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs z-50 flex items-center justify-center p-4 z-[9999]">
           <div className="bg-white dark:bg-[#202023] w-full max-w-md rounded-3xl p-6 border border-slate-200 dark:border-[#333338] shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-100">
             <div className="flex items-center justify-between border-b border-slate-100 dark:border-[#2e2e34] pb-3">
-              <div className="flex items-center gap-2"><Info size={16} className="text-blue-500" /><h3 className="text-xs font-bold text-slate-800 dark:text-white uppercase tracking-wider">Propriedades do {propertiesModal.is_dir ? 'Diretório' : 'Arquivo'}</h3></div>
+              <div className="flex items-center gap-2"><Info size={16} className="text-blue-500" /><h3 className="text-xs font-bold text-slate-800 dark:text-white uppercase tracking-wider">{propertiesModal.is_dir ? t('explorer.modal_props_title_dir') : t('explorer.modal_props_title_file')}</h3></div>
               <button onClick={() => setPropertiesModal(null)} className="text-slate-400 hover:text-white"><X size={15} /></button>
             </div>
             <div className="space-y-2.5 text-xs text-slate-600 dark:text-slate-300">
               <div className="p-3 bg-slate-50 dark:bg-[#18181b] rounded-xl border border-slate-100 dark:border-[#2d2d34] space-y-1.5 font-mono text-[11px]">
-                <p><strong className="text-slate-700 dark:text-slate-200 font-sans">Nome:</strong> {propertiesModal.name}</p>
-                <p className="break-all"><strong className="text-slate-700 dark:text-slate-200 font-sans">Caminho:</strong> {propertiesModal.full_path || propertiesModal.path}</p>
-                <p><strong className="text-slate-700 dark:text-slate-200 font-sans">Tamanho:</strong> {propertiesModal.size_formatted || `${propertiesModal.size_bytes} Bytes`}</p>
-                <p><strong className="text-slate-700 dark:text-slate-200 font-sans">Criado em:</strong> {propertiesModal.created_at || '--'}</p>
-                <p><strong className="text-slate-700 dark:text-slate-200 font-sans">Modificado em:</strong> {propertiesModal.modified_at || '--'}</p>
-                <p><strong className="text-slate-700 dark:text-slate-200 font-sans">Atributo:</strong> {propertiesModal.is_readonly ? 'Somente Leitura' : 'Leitura e Escrita'}</p>
+                <p><strong className="text-slate-700 dark:text-slate-200 font-sans">{t('explorer.props_name')}</strong> {propertiesModal.name}</p>
+                <p className="break-all"><strong className="text-slate-700 dark:text-slate-200 font-sans">{t('explorer.props_path')}</strong> {propertiesModal.full_path || propertiesModal.path}</p>
+                <p><strong className="text-slate-700 dark:text-slate-200 font-sans">{t('explorer.props_size')}</strong> {propertiesModal.size_formatted || `${propertiesModal.size_bytes} Bytes`}</p>
+                <p><strong className="text-slate-700 dark:text-slate-200 font-sans">{t('explorer.props_created')}</strong> {propertiesModal.created_at || '--'}</p>
+                <p><strong className="text-slate-700 dark:text-slate-200 font-sans">{t('explorer.props_modified')}</strong> {propertiesModal.modified_at || '--'}</p>
+                <p><strong className="text-slate-700 dark:text-slate-200 font-sans">{t('explorer.props_attr')}</strong> {propertiesModal.is_readonly ? t('explorer.props_readonly') : t('explorer.props_readwrite')}</p>
               </div>
             </div>
             <div className="flex justify-end pt-2">
-              <button onClick={() => setPropertiesModal(null)} className="px-5 py-2 rounded-xl bg-slate-100 dark:bg-[#27272a] text-slate-700 dark:text-slate-200 text-xs font-bold transition-colors">Fechar</button>
+              <button onClick={() => setPropertiesModal(null)} className="px-5 py-2 rounded-xl bg-slate-100 dark:bg-[#27272a] text-slate-700 dark:text-slate-200 text-xs font-bold transition-colors">{t('explorer.btn_close')}</button>
             </div>
           </div>
         </div>

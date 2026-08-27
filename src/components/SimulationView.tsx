@@ -12,12 +12,15 @@ import {
   SlidersHorizontal,
   ChevronDown
 } from 'lucide-react';
+import { useTranslation } from 'react-i18next'; // ⚡ Óculos Mágicos!
 
 interface SimulationViewProps {
   accentColor: string;
 }
 
 export const SimulationView: React.FC<SimulationViewProps> = ({ accentColor }) => {
+  const { t } = useTranslation(); // ⚡ Instância do tradutor ativada
+
   const [rules, setRules] = useState<Rule[]>([]);
   const [selectedRuleIds, setSelectedRuleIds] = useState<number[]>([]);
   const [dropdownOpen, setDropdownOpen] = useState(false);
@@ -59,7 +62,7 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ accentColor }) =
 
   const handleSimulate = async () => {
     if (selectedRuleIds.length === 0) {
-      alert('Selecione ao menos uma regra para simular.');
+      alert(t('simulation.alert_select_simulate'));
       return;
     }
 
@@ -72,13 +75,13 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ accentColor }) =
         const res = await invoke<DryRunResult[]>('run_simulation', { ruleId: rId });
         allResults.push({
           ruleId: rId,
-          ruleName: rule ? `ID ${rule.custom_code} - ${rule.name}` : `Regra ${rId}`,
+          ruleName: rule ? `ID ${rule.custom_code} - ${rule.name}` : `Rule ${rId}`,
           results: res,
         });
       }
       setSimResults(allResults);
     } catch (e) {
-      alert(`Erro na simulação: ${e}`);
+      alert(`${t('simulation.alert_sim_error')} ${e}`);
     } finally {
       setLoading(false);
     }
@@ -86,7 +89,7 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ accentColor }) =
 
   const handleExecute = async () => {
     if (selectedRuleIds.length === 0) return;
-    if (!confirm(`Deseja executar as ${selectedRuleIds.length} regra(s) selecionada(s) agora?`)) return;
+    if (!confirm(`${t('simulation.alert_exec_confirm_1')} ${selectedRuleIds.length} ${t('simulation.alert_exec_confirm_2')}`)) return;
 
     setExecuting(true);
     try {
@@ -95,12 +98,24 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ accentColor }) =
         const batch = await invoke<string>('execute_rule', { ruleId: rId });
         if (batch.startsWith('Lote')) totalExecuted++;
       }
-      alert(`Execução concluída com sucesso.`);
+      alert(t('simulation.alert_exec_success'));
       handleSimulate();
     } catch (e) {
-      alert(`Erro na execução: ${e}`);
+      alert(`${t('simulation.alert_exec_error')} ${e}`);
     } finally {
       setExecuting(false);
+    }
+  };
+
+  // ⚡ Tradutor de Ações (banco de dados) para a Interface
+  const translateAction = (actionKey: string) => {
+    switch (actionKey) {
+      case 'MOVE': return t('rule_builder.action_move') || 'MOVE';
+      case 'COPY': return t('rule_builder.action_copy') || 'COPY';
+      case 'ZIP': return t('rule_builder.action_zip') || 'ZIP';
+      case 'RENAME': return t('rule_builder.action_rename') || 'RENAME';
+      case 'DELETE': return t('rule_builder.action_delete') || 'DELETE';
+      default: return actionKey;
     }
   };
 
@@ -119,7 +134,7 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ accentColor }) =
         {/* Seletor Múltiplo Customizado */}
         <div className="relative flex-1 min-w-[260px] max-w-md" onClick={(e) => e.stopPropagation()}>
           <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
-            Regras Selecionadas ({selectedRuleIds.length} de {rules.length})
+            {t('simulation.selected_rules')} ({selectedRuleIds.length} {t('simulation.of')} {rules.length})
           </label>
 
           <button
@@ -131,10 +146,10 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ accentColor }) =
               <Layers size={14} style={{ color: accentColor }} />
               <span className="truncate">
                 {selectedRuleIds.length === 0 
-                  ? 'Nenhuma regra selecionada'
+                  ? t('simulation.none_selected')
                   : isAllSelected 
-                  ? 'Todas as Regras Selecionadas' 
-                  : `${selectedRuleIds.length} Regra(s) Selecionada(s)`}
+                  ? t('simulation.all_selected') 
+                  : `${selectedRuleIds.length} ${t('simulation.rule_s_selected')}`}
               </span>
             </div>
             <ChevronDown size={14} className="text-slate-400 shrink-0" />
@@ -149,7 +164,7 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ accentColor }) =
                 className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs font-bold text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/40"
               >
                 {isAllSelected ? <CheckSquare size={14} /> : <Square size={14} />}
-                <span>Selecionar Todas as Regras</span>
+                <span>{t('simulation.select_all_btn')}</span>
               </button>
 
               <div className="h-[1px] bg-slate-100 dark:bg-[#2d2d34] my-1" />
@@ -184,7 +199,7 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ accentColor }) =
             className="px-4 py-2 rounded-xl bg-slate-100 dark:bg-[#27272a] hover:bg-slate-200 text-xs font-bold text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-[#383840] flex items-center gap-1.5 transition-colors disabled:opacity-40"
           >
             <FlaskConical size={14} className={loading ? "animate-spin text-blue-500" : ""} />
-            <span>{loading ? 'Simulando...' : `Simular (${selectedRuleIds.length})`}</span>
+            <span>{loading ? t('simulation.btn_simulating') : `${t('simulation.btn_simulate')} (${selectedRuleIds.length})`}</span>
           </button>
 
           <button
@@ -194,7 +209,7 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ accentColor }) =
             style={{ backgroundColor: accentColor }}
           >
             <Play size={14} className={executing ? "animate-spin" : "fill-white"} />
-            <span>{executing ? 'Executando...' : `Executar Agora (${totalFilesFound} arquivos)`}</span>
+            <span>{executing ? t('simulation.btn_executing') : `${t('simulation.btn_execute')} (${totalFilesFound} ${t('simulation.files')})`}</span>
           </button>
         </div>
       </div>
@@ -204,7 +219,7 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ accentColor }) =
         {simResults.length === 0 ? (
           <div className="h-full flex flex-col items-center justify-center text-xs text-slate-400 gap-2">
             <SlidersHorizontal size={24} className="opacity-40" />
-            <span>Selecione as regras desejadas e clique em "Simular" para conferir os caminhos de De ➔ Para.</span>
+            <span>{t('simulation.empty_state')}</span>
           </div>
         ) : (
           simResults.map((group) => (
@@ -215,12 +230,12 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ accentColor }) =
                   {group.ruleName}
                 </span>
                 <span className="text-[11px] font-mono font-bold text-blue-600 bg-blue-50 dark:bg-blue-950/50 px-2 py-0.5 rounded-md">
-                  {group.results.length} arquivo(s) correspondente(s)
+                  {group.results.length} {t('simulation.matching_files')}
                 </span>
               </div>
 
               {group.results.length === 0 ? (
-                <p className="text-xs text-slate-400 italic px-3 py-1">Nenhum arquivo atende aos filtros desta regra no momento.</p>
+                <p className="text-xs text-slate-400 italic px-3 py-1">{t('simulation.no_files_match')}</p>
               ) : (
                 <div className="space-y-1.5">
                   {group.results.map((res, i) => (
@@ -236,8 +251,9 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ accentColor }) =
                         <span className="font-bold text-slate-700 dark:text-slate-200 truncate max-w-[220px]" title={res.destination}>{res.destination}</span>
                       </div>
 
-                      <span className="text-[10px] font-bold text-slate-600 dark:text-slate-300 bg-slate-200 dark:bg-[#25252b] px-2 py-0.5 rounded shrink-0 self-start sm:self-auto">
-                        {res.action}
+                      {/* ⚡ Ação Traduzida aqui: */}
+                      <span className="text-[10px] font-bold text-slate-600 dark:text-slate-300 bg-slate-200 dark:bg-[#25252b] px-2 py-0.5 rounded shrink-0 self-start sm:self-auto uppercase">
+                        {translateAction(res.action)}
                       </span>
                     </div>
                   ))}

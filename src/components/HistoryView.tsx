@@ -21,10 +21,12 @@ import {
   CheckSquare,
   Square
 } from 'lucide-react';
+import { useTranslation } from 'react-i18next'; // ⚡ Óculos Mágicos
 
 type HistoryDateFilter = 'ALL' | 'TODAY' | '7D' | '30D' | 'EXACT' | 'RANGE';
 
 export const HistoryView: React.FC = () => {
+  const { t } = useTranslation(); // ⚡ Instância ativada
   const [logs, setLogs] = useState<AuditLog[]>([]);
   const [search, setSearch] = useState('');
   const [batchFilter, setBatchFilter] = useState('ALL');
@@ -57,47 +59,47 @@ export const HistoryView: React.FC = () => {
   };
 
   const handleRollbackLast = async () => {
-    if (!confirm('Deseja realmente desfazer o último lote de arquivos organizados?')) return;
+    if (!confirm(t('history.confirm_last'))) return;
     try {
       const count = await invoke<number>('rollback_last_batch');
-      alert(`Sucesso: ${count} arquivo(s) foram revertidos aos seus locais de origem.`);
+      alert(`${t('history.success')} ${count} ${t('history.files_reverted_origin')}`);
       loadLogs();
     } catch (e) {
-      alert(`Falha no Rollback: ${e}`);
+      alert(`${t('history.fail_rollback')} ${e}`);
     }
   };
 
   const handleRollbackBatch = async (batchId: string) => {
-    if (!confirm(`Deseja reverter todas as movimentações do lote ${batchId}?`)) return;
+    if (!confirm(`${t('history.confirm_batch')} ${batchId}?`)) return;
     try {
       const count = await invoke<number>('rollback_batch', { batchId });
-      alert(`Sucesso: ${count} arquivo(s) do lote ${batchId} foram restaurados.`);
+      alert(`${t('history.success')} ${count} ${t('history.files_from_batch')} ${batchId} ${t('history.were_restored')}`);
       loadLogs();
     } catch (e) {
-      alert(`Falha ao reverter: ${e}`);
+      alert(`${t('history.fail_revert')} ${e}`);
     }
   };
 
   const handleSingleRollback = async (auditId: number) => {
-    if (!confirm('Deseja desfazer a movimentação apenas deste arquivo?')) return;
+    if (!confirm(t('history.confirm_single'))) return;
     try {
       await invoke('rollback_single_item', { auditId });
-      alert('Arquivo restaurado com sucesso ao local de origem.');
+      alert(t('history.success_single'));
       loadLogs();
     } catch (e) {
-      alert(`Falha ao reverter arquivo: ${e}`);
+      alert(`${t('history.fail_single')} ${e}`);
     }
   };
 
   const handleSelectedRollback = async () => {
     if (selectedLogIds.length === 0) return;
-    if (!confirm(`Deseja realizar o rollback de ${selectedLogIds.length} arquivo(s) selecionado(s)?`)) return;
+    if (!confirm(`${t('history.confirm_selected')} ${selectedLogIds.length} ${t('history.files_selected')}`)) return;
     try {
       const count = await invoke<number>('rollback_multiple_items', { auditIds: selectedLogIds });
-      alert(`Sucesso: ${count} arquivo(s) selecionado(s) foram revertidos.`);
+      alert(`${t('history.success')} ${count} ${t('history.files_selected_reverted')}`);
       loadLogs();
     } catch (e) {
-      alert(`Falha ao reverter itens selecionados: ${e}`);
+      alert(`${t('history.fail_selected')} ${e}`);
     }
   };
 
@@ -124,7 +126,7 @@ export const HistoryView: React.FC = () => {
       const report = await invoke<IntegrityReport>('verify_audit_integrity');
       setIntegrityStatus(report);
     } catch (e) {
-      alert(`Erro na validação forense: ${e}`);
+      alert(`${t('history.fail_integrity')} ${e}`);
     } finally {
       setCheckingIntegrity(false);
     }
@@ -138,7 +140,7 @@ export const HistoryView: React.FC = () => {
 
   const handleExportCSV = () => {
     if (logs.length === 0) return;
-    const headers = 'ID;Lote;Acao;Origem;Destino;Tamanho_Bytes;Hash_SHA256;Hash_Bloco;Usuario_Windows;Status;Data_Hora\n';
+    const headers = t('history.csv_headers');
     const rows = logs.map(l => 
       `"${l.id}";"${l.batch_id}";"${l.action_type}";"${l.original_path}";"${l.destination_path || ''}";"${l.file_size_bytes}";"${l.file_hash_sha256 || ''}";"${l.current_log_hash || ''}";"${l.windows_user || ''}";"${l.status}";"${l.executed_at}"`
     ).join('\n');
@@ -147,10 +149,27 @@ export const HistoryView: React.FC = () => {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.setAttribute('href', url);
-    link.setAttribute('download', `Auditoria_Forense_${new Date().toISOString().slice(0,10)}.csv`);
+    link.setAttribute('download', `${t('history.csv_filename')}${new Date().toISOString().slice(0,10)}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+  };
+
+  const translateStatus = (status: string) => {
+    if (status === 'SUCESSO' || status === 'SUCCESS') return t('history.status_success');
+    if (status === 'REVERTIDO' || status === 'REVERTED') return t('history.status_reverted');
+    return status;
+  };
+
+  const translateAction = (actionKey: string) => {
+    switch (actionKey) {
+      case 'MOVE': return t('rule_builder.action_move') || 'MOVE';
+      case 'COPY': return t('rule_builder.action_copy') || 'COPY';
+      case 'ZIP': return t('rule_builder.action_zip') || 'ZIP';
+      case 'RENAME': return t('rule_builder.action_rename') || 'RENAME';
+      case 'DELETE': return t('rule_builder.action_delete') || 'DELETE';
+      default: return actionKey;
+    }
   };
 
   const uniqueBatches = Array.from(new Set(logs.map(l => l.batch_id)));
@@ -217,7 +236,7 @@ export const HistoryView: React.FC = () => {
             <Search size={13} className="absolute left-3 top-2.5 text-slate-400" />
             <input 
               type="text" 
-              placeholder="Pesquisar por caminho, hash..."
+              placeholder={t('history.search_ph')}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="w-full pl-8 pr-3 py-1.5 text-xs bg-slate-50 dark:bg-[#18181b] border border-slate-200 dark:border-[#2e2e34] rounded-xl text-slate-800 dark:text-white font-medium"
@@ -229,9 +248,9 @@ export const HistoryView: React.FC = () => {
             <select
               value={batchFilter}
               onChange={(e) => setBatchFilter(e.target.value)}
-              className="bg-transparent text-slate-800 dark:text-white font-bold outline-none cursor-pointer max-w-[150px] truncate text-xs"
+              className="bg-transparent text-slate-800 dark:text-white font-bold outline-none cursor-pointer max-w-[150px] truncate text-xs dark:[color-scheme:dark]"
             >
-              <option value="ALL" className="bg-white dark:bg-[#202024] text-slate-800 dark:text-white">Todos os Lotes ({uniqueBatches.length})</option>
+              <option value="ALL" className="bg-white dark:bg-[#202024] text-slate-800 dark:text-white">{t('history.all_batches')} ({uniqueBatches.length})</option>
               {uniqueBatches.map(b => (
                 <option key={b} value={b} className="bg-white dark:bg-[#202024] text-slate-800 dark:text-white">{b}</option>
               ))}
@@ -243,14 +262,14 @@ export const HistoryView: React.FC = () => {
             <select
               value={dateFilterType}
               onChange={(e) => setDateFilterType(e.target.value as HistoryDateFilter)}
-              className="bg-transparent text-slate-800 dark:text-white font-bold outline-none cursor-pointer text-xs"
+              className="bg-transparent text-slate-800 dark:text-white font-bold outline-none cursor-pointer text-xs dark:[color-scheme:dark]"
             >
-              <option value="ALL" className="bg-white dark:bg-[#202024] text-slate-800 dark:text-white">Todas as Datas</option>
-              <option value="TODAY" className="bg-white dark:bg-[#202024] text-slate-800 dark:text-white">Hoje</option>
-              <option value="7D" className="bg-white dark:bg-[#202024] text-slate-800 dark:text-white">Últimos 7 Dias</option>
-              <option value="30D" className="bg-white dark:bg-[#202024] text-slate-800 dark:text-white">Últimos 30 Dias</option>
-              <option value="EXACT" className="bg-white dark:bg-[#202024] text-slate-800 dark:text-white">Dia Específico</option>
-              <option value="RANGE" className="bg-white dark:bg-[#202024] text-slate-800 dark:text-white">Intervalo de Datas</option>
+              <option value="ALL" className="bg-white dark:bg-[#202024] text-slate-800 dark:text-white">{t('history.all_dates')}</option>
+              <option value="TODAY" className="bg-white dark:bg-[#202024] text-slate-800 dark:text-white">{t('history.today')}</option>
+              <option value="7D" className="bg-white dark:bg-[#202024] text-slate-800 dark:text-white">{t('history.last_7d')}</option>
+              <option value="30D" className="bg-white dark:bg-[#202024] text-slate-800 dark:text-white">{t('history.last_30d')}</option>
+              <option value="EXACT" className="bg-white dark:bg-[#202024] text-slate-800 dark:text-white">{t('history.exact_date')}</option>
+              <option value="RANGE" className="bg-white dark:bg-[#202024] text-slate-800 dark:text-white">{t('history.date_range')}</option>
             </select>
           </div>
         </div>
@@ -263,10 +282,10 @@ export const HistoryView: React.FC = () => {
               <button
                 onClick={handleSelectedRollback}
                 className="px-3 py-1.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-bold flex items-center gap-1.5 shadow-sm transition-all active:scale-95 animate-in fade-in duration-150"
-                title="Reverter todos os arquivos marcados na listagem"
+                title={t('history.btn_revert_tooltip')}
               >
                 <Undo2 size={13} />
-                <span>Reverter ({selectedLogIds.length})</span>
+                <span>{t('history.btn_revert')} ({selectedLogIds.length})</span>
               </button>
             </div>
           )}
@@ -274,10 +293,10 @@ export const HistoryView: React.FC = () => {
           <button
             onClick={() => setShowLgpdModal(true)}
             className="px-2.5 py-1.5 rounded-xl bg-purple-50 dark:bg-purple-950/40 text-purple-600 text-[11px] font-bold flex items-center gap-1 border border-purple-200 dark:border-purple-900 hover:bg-purple-100 transition-colors"
-            title="Clique para ver os parâmetros de conformidade com a LGPD"
+            title={t('history.btn_lgpd_tooltip')}
           >
             <Lock size={12} />
-            <span>Modo LGPD Ativo</span>
+            <span>{t('history.btn_lgpd')}</span>
           </button>
 
           <button
@@ -286,7 +305,7 @@ export const HistoryView: React.FC = () => {
             className="px-3 py-1.5 rounded-xl bg-blue-50 dark:bg-blue-950/40 text-blue-600 hover:bg-blue-100 text-xs font-bold flex items-center gap-1.5 border border-blue-200 dark:border-blue-900 transition-colors"
           >
             <ShieldCheck size={14} className={checkingIntegrity ? "animate-spin" : ""} />
-            <span className="hidden sm:inline">{checkingIntegrity ? "Validando..." : "Verificar Cadeia"}</span>
+            <span className="hidden sm:inline">{checkingIntegrity ? t('history.btn_verifying') : t('history.btn_verify')}</span>
           </button>
 
           <button
@@ -294,7 +313,7 @@ export const HistoryView: React.FC = () => {
             className="px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-[#27272a] hover:bg-slate-200 text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1 border border-slate-200 dark:border-[#383840] transition-colors"
           >
             <Download size={13} />
-            <span className="hidden sm:inline">Exportar (.CSV)</span>
+            <span className="hidden sm:inline">{t('history.btn_export')}</span>
           </button>
 
           <button 
@@ -302,7 +321,7 @@ export const HistoryView: React.FC = () => {
             className="px-3.5 py-1.5 rounded-xl bg-slate-800 dark:bg-[#25252a] hover:bg-slate-900 text-white text-xs font-bold flex items-center gap-1.5 shadow-sm transition-all active:scale-95 shrink-0 border border-slate-700"
           >
             <RotateCcw size={13} />
-            <span>Desfazer Último Lote</span>
+            <span>{t('history.btn_undo_last')}</span>
           </button>
         </div>
       </div>
@@ -310,21 +329,21 @@ export const HistoryView: React.FC = () => {
       {/* Datas Personalizadas para Auditoria */}
       {(dateFilterType === 'EXACT' || dateFilterType === 'RANGE') && (
         <div className="flex items-center gap-2 p-2 bg-white dark:bg-[#1e1e24] rounded-xl border border-slate-200 dark:border-[#2e2e34] text-xs">
-          <span className="text-[11px] font-bold text-slate-400">Data de Início:</span>
+          <span className="text-[11px] font-bold text-slate-400">{t('history.start_date')}</span>
           <input 
             type="date" 
             value={startDate} 
             onChange={(e) => setStartDate(e.target.value)}
-            className="bg-transparent text-slate-800 dark:text-white font-bold outline-none cursor-pointer text-xs" 
+            className="bg-transparent text-slate-800 dark:text-white font-bold outline-none cursor-pointer text-xs dark:[color-scheme:dark]" 
           />
           {dateFilterType === 'RANGE' && (
             <>
-              <span className="text-[11px] font-bold text-slate-400 ml-2">Data Fim:</span>
+              <span className="text-[11px] font-bold text-slate-400 ml-2">{t('history.end_date')}</span>
               <input 
                 type="date" 
                 value={endDate} 
                 onChange={(e) => setEndDate(e.target.value)}
-                className="bg-transparent text-slate-800 dark:text-white font-bold outline-none cursor-pointer text-xs" 
+                className="bg-transparent text-slate-800 dark:text-white font-bold outline-none cursor-pointer text-xs dark:[color-scheme:dark]" 
               />
             </>
           )}
@@ -342,13 +361,13 @@ export const HistoryView: React.FC = () => {
             {integrityStatus.is_valid ? <ShieldCheck size={18} className="text-green-600 shrink-0" /> : <ShieldAlert size={18} className="text-red-600 shrink-0" />}
             <div>
               <span className="font-bold block">
-                {integrityStatus.is_valid ? 'Trilha de Auditoria 100% Íntegra' : 'Alerta de Adulteração de Trilha'}
+                {integrityStatus.is_valid ? t('history.integrity_ok') : t('history.integrity_warn')}
               </span>
               <span className="text-[11px] opacity-90">{integrityStatus.message}</span>
             </div>
           </div>
           <button onClick={() => setIntegrityStatus(null)} className="opacity-60 hover:opacity-100 text-xs">
-            Fechar
+            {t('history.btn_close')}
           </button>
         </div>
       )}
@@ -358,21 +377,21 @@ export const HistoryView: React.FC = () => {
         <div className="flex items-center justify-between px-4 py-2.5 bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-800 rounded-xl text-xs text-blue-900 dark:text-blue-200 font-bold shrink-0 animate-in fade-in duration-150">
           <div className="flex items-center gap-2">
             <CheckSquare size={15} className="text-blue-600 dark:text-blue-400" />
-            <span>{selectedLogIds.length} arquivo(s) selecionado(s) para estorno.</span>
+            <span>{selectedLogIds.length} {t('history.selected_for_rollback')}</span>
           </div>
           <div className="flex items-center gap-2">
             <button 
               onClick={() => setSelectedLogIds([])}
               className="px-3 py-1 bg-white dark:bg-[#1e1e24] text-slate-600 dark:text-slate-300 rounded-lg hover:bg-slate-100 text-[11px] transition-colors"
             >
-              Limpar Seleção
+              {t('history.clear_selection')}
             </button>
             <button 
               onClick={handleSelectedRollback}
               className="px-3.5 py-1 bg-red-600 hover:bg-red-700 text-white rounded-lg text-[11px] shadow-xs flex items-center gap-1.5 transition-all"
             >
               <Undo2 size={12} />
-              Reverter Selecionados
+              {t('history.revert_selected')}
             </button>
           </div>
         </div>
@@ -388,15 +407,15 @@ export const HistoryView: React.FC = () => {
               className="flex items-center gap-1.5 hover:text-blue-600 transition-colors"
             >
               {allCurrentSelected ? <CheckSquare size={14} className="text-blue-600" /> : <Square size={14} />}
-              <span>Selecionar todos reversíveis visíveis</span>
+              <span>{t('history.select_all_visible')}</span>
             </button>
           </div>
         )}
 
         {loading ? (
-          <div className="h-full flex items-center justify-center text-xs text-slate-400 font-medium">Carregando logs...</div>
+          <div className="h-full flex items-center justify-center text-xs text-slate-400 font-medium">{t('history.loading_logs')}</div>
         ) : filteredLogs.length === 0 ? (
-          <div className="h-full flex items-center justify-center text-xs text-slate-400">Nenhum registro de auditoria encontrado.</div>
+          <div className="h-full flex items-center justify-center text-xs text-slate-400">{t('history.no_logs')}</div>
         ) : (
           filteredLogs.map((log) => {
             const isChecked = log.id !== null && log.id !== undefined && selectedLogIds.includes(log.id);
@@ -423,7 +442,7 @@ export const HistoryView: React.FC = () => {
                     )}
 
                     <span className="text-slate-400 font-mono text-[11px]">[{log.executed_at}]</span>
-                    <span className="font-bold text-blue-600 dark:text-blue-400 font-mono text-[11px]">Lote: {log.batch_id}</span>
+                    <span className="font-bold text-blue-600 dark:text-blue-400 font-mono text-[11px]">{t('history.batch')} {log.batch_id}</span>
                     {log.windows_user && (
                       <span className="text-slate-500 dark:text-slate-400 flex items-center gap-1 text-[11px]">
                         <User size={11} /> {log.windows_user}
@@ -436,22 +455,22 @@ export const HistoryView: React.FC = () => {
                       <button
                         onClick={() => handleRollbackBatch(log.batch_id)}
                         className="px-2.5 py-1 rounded-lg bg-red-50 dark:bg-red-950/40 text-red-600 hover:bg-red-100 text-[11px] font-bold border border-red-200 dark:border-red-900 flex items-center gap-1 transition-colors"
-                        title="Reverter todos os arquivos pertencentes a este lote"
+                        title={t('history.revert_batch_tooltip')}
                       >
                         <Undo2 size={12} />
-                        <span>Reverter Lote</span>
+                        <span>{t('history.revert_batch')}</span>
                       </button>
                     ) : null}
 
                     <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase flex items-center gap-1 ${
-                      log.status === 'SUCESSO' 
+                      log.status === 'SUCESSO' || log.status === 'SUCCESS'
                         ? 'bg-green-100 dark:bg-green-950/50 text-green-700' 
-                        : log.status === 'REVERTIDO'
+                        : log.status === 'REVERTIDO' || log.status === 'REVERTED'
                         ? 'bg-slate-200 dark:bg-[#25252a] text-slate-500'
                         : 'bg-red-100 dark:bg-red-950/50 text-red-700'
                     }`}>
-                      {log.status === 'SUCESSO' ? <CheckCircle2 size={10} /> : <XCircle size={10} />}
-                      {log.status} • {log.action_type}
+                      {log.status === 'SUCESSO' || log.status === 'SUCCESS' ? <CheckCircle2 size={10} /> : <XCircle size={10} />}
+                      {translateStatus(log.status)} • {translateAction(log.action_type)}
                     </span>
                   </div>
                 </div>
@@ -459,13 +478,13 @@ export const HistoryView: React.FC = () => {
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs font-mono bg-white dark:bg-[#141416] p-2.5 rounded-lg border border-slate-200 dark:border-[#2b2b30]">
                   <div className="space-y-1 overflow-hidden flex-1 min-w-0">
                     <div className="flex items-start gap-1.5 truncate text-slate-700 dark:text-slate-300">
-                      <span className="text-slate-400 font-bold shrink-0">De:</span>
+                      <span className="text-slate-400 font-bold shrink-0">{t('history.from')}</span>
                       <span className="truncate" title={log.original_path}>{log.original_path}</span>
                     </div>
                     {log.destination_path && (
                       <div className="flex items-start gap-1.5 truncate text-slate-700 dark:text-slate-300">
                         <span className="text-slate-400 font-bold shrink-0 flex items-center gap-0.5">
-                          Para: <ArrowRight size={10} />
+                          {t('history.to')} <ArrowRight size={10} />
                         </span>
                         <span className="truncate" title={log.destination_path}>{log.destination_path}</span>
                       </div>
@@ -476,10 +495,10 @@ export const HistoryView: React.FC = () => {
                     <button
                       onClick={() => handleSingleRollback(log.id as number)}
                       className="px-3 py-1.5 bg-red-50 dark:bg-red-950/30 text-red-600 dark:text-red-400 hover:bg-red-500 hover:text-white dark:hover:bg-red-600 rounded-lg font-sans text-[11px] font-bold transition-colors shrink-0 flex items-center justify-center gap-1.5 border border-red-200 dark:border-red-900/50"
-                      title="Desfazer a movimentação apenas deste arquivo"
+                      title={t('history.undo_file_tooltip')}
                     >
                       <Undo2 size={12} />
-                      Desfazer Arquivo
+                      {t('history.undo_file')}
                     </button>
                   )}
                 </div>
@@ -490,7 +509,7 @@ export const HistoryView: React.FC = () => {
                       <button
                         onClick={() => copyToClipboard(log.file_hash_sha256!)}
                         className="hover:text-blue-500 flex items-center gap-1"
-                        title="Copiar Hash SHA-256"
+                        title={t('history.copy_hash')}
                       >
                         <span>SHA-256: {log.file_hash_sha256.slice(0, 16)}...</span>
                         {copiedHash === log.file_hash_sha256 ? <Check size={10} className="text-green-500" /> : null}
@@ -501,7 +520,7 @@ export const HistoryView: React.FC = () => {
                       <button
                         onClick={() => copyToClipboard(log.current_log_hash!)}
                         className="hover:text-blue-500 flex items-center gap-1 text-blue-600 dark:text-blue-400"
-                        title="Copiar Hash do Bloco"
+                        title={t('history.copy_block')}
                       >
                         <span>Hash-Block: {log.current_log_hash.slice(0, 16)}...</span>
                         {copiedHash === log.current_log_hash ? <Check size={10} className="text-green-500" /> : null}
@@ -534,8 +553,8 @@ export const HistoryView: React.FC = () => {
                   <Shield size={18} />
                 </div>
                 <div>
-                  <h3 className="text-xs font-bold text-slate-800 dark:text-white">Conformidade LGPD & Zero-Knowledge</h3>
-                  <p className="text-[10px] text-slate-400">Garantia de Privacidade Corporativa</p>
+                  <h3 className="text-xs font-bold text-slate-800 dark:text-white">{t('history.modal_lgpd_title')}</h3>
+                  <p className="text-[10px] text-slate-400">{t('history.modal_lgpd_subtitle')}</p>
                 </div>
               </div>
               <button onClick={() => setShowLgpdModal(false)} className="text-slate-400 hover:text-white">
@@ -544,9 +563,9 @@ export const HistoryView: React.FC = () => {
             </div>
 
             <div className="space-y-2 text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
-              <p>• <strong>Execução 100% Local:</strong> Nenhum dado, nome ou conteúdo de arquivo transita por servidores externos.</p>
-              <p>• <strong>Assinatura SHA-256 Forense:</strong> Cada movimentação gera um elo criptográfico encadeado à prova de adulteração.</p>
-              <p>• <strong>Trilha de Auditoria Auditável:</strong> Todos os lotes possuem registro do usuário do Windows que executou a operação.</p>
+              <p>• <strong>{t('history.lgpd_1_title')}</strong> {t('history.lgpd_1_desc')}</p>
+              <p>• <strong>{t('history.lgpd_2_title')}</strong> {t('history.lgpd_2_desc')}</p>
+              <p>• <strong>{t('history.lgpd_3_title')}</strong> {t('history.lgpd_3_desc')}</p>
             </div>
 
             <div className="pt-2 flex justify-end">
@@ -554,7 +573,7 @@ export const HistoryView: React.FC = () => {
                 onClick={() => setShowLgpdModal(false)}
                 className="px-5 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold shadow-sm"
               >
-                Fechar
+                {t('history.btn_close')}
               </button>
             </div>
           </div>

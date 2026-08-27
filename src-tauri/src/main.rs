@@ -69,9 +69,18 @@ fn main() {
             save_setting,
             show_system_notification,
             admin_change_plan,
+            smart_organize_folder,
 
             // 💾 Comandos de Backup
-            execute_advanced_backup
+            get_backup_tasks,
+            save_backup_task,
+            delete_backup_task,
+            get_backup_logs,
+            execute_advanced_backup,
+
+            //🤖IA Copilot Command
+            generate_rule_via_ai,
+            chat_with_foldex_agent
         ])
         .run(tauri::generate_context!())
         .expect("Erro ao executar aplicação Tauri");

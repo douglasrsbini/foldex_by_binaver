@@ -1,5 +1,5 @@
 use crate::db::schema::get_db_path;
-use crate::models::{AuditLog, DryRunResult, IntegrityReport, LicenseInfo};
+use crate::models::{AuditLog, DryRunResult, IntegrityReport, LicenseInfo, RuleAction};
 use crate::commands::rules::get_rules;
 use crate::commands::explorer::compress_items_to_zip;
 use rusqlite::{params, Connection, Result};
@@ -11,6 +11,7 @@ use walkdir::WalkDir;
 use sha2::{Sha256, Digest};
 use serde::{Deserialize, Serialize};
 use tauri_plugin_notification::NotificationExt;
+use serde_json::Value;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct VerificationRequestResponse {
@@ -64,6 +65,21 @@ fn compute_file_sha256(path: &Path) -> String {
         hasher.update(&buffer[..n]);
     }
     format!("{:x}", hasher.finalize())
+}
+
+fn get_current_plan(conn: &Connection) -> String {
+    let row: Option<(i64, String)> = conn.query_row(
+        "SELECT is_activated, plan_name FROM app_license WHERE id = 1",
+        [],
+        |r| Ok((r.get(0)?, r.get(1)?))
+    ).ok();
+
+    if let Some((is_act, plan)) = row {
+        if is_act == 1 {
+            return plan.to_lowercase();
+        }
+    }
+    "demonstração (trial)".to_string()
 }
 
 #[tauri::command]
@@ -402,20 +418,73 @@ fn resolve_unique_path(dest: PathBuf) -> PathBuf {
     }
 }
 
-fn resolve_destination_path(file: &Path, pattern: &str) -> PathBuf {
-    let (ano, mes, dia, ext, tipo_doc, filename, _, _, _) = extract_file_data(file);
-    let mut resolved = pattern.to_string();
+// ⚡ MOTOR DE HIGIENIZAÇÃO E REGEX (CORE DA FRENTE B)
+fn apply_filename_hygiene(original_stem: &str, action: &RuleAction) -> String {
+    let mut name = original_stem.to_string();
+
+    // 1. Tratamento por Regex (Expressões Regulares)
+    if let (Some(pat), Some(rep)) = (&action.regex_pattern, &action.regex_replacement) {
+        if !pat.trim().is_empty() {
+            if let Ok(re) = regex::Regex::new(pat) {
+                name = re.replace_all(&name, rep.as_str()).to_string();
+            }
+        }
+    }
+
+    // 2. Remoção de Acentos (Tratamento fonético local leve)
+    if action.clean_accents.unwrap_or(false) {
+        name = name
+            .replace("á", "a").replace("é", "e").replace("í", "i").replace("ó", "o").replace("ú", "u")
+            .replace("ã", "a").replace("õ", "o").replace("â", "a").replace("ê", "e").replace("ô", "o")
+            .replace("ç", "c").replace("Á", "A").replace("É", "E").replace("Í", "I").replace("Ó", "O")
+            .replace("Ú", "U").replace("Ã", "A").replace("Õ", "O").replace("Â", "A").replace("Ê", "E")
+            .replace("Ô", "O").replace("Ç", "C");
+    }
+
+    // 3. Remoção de Espaços
+    if action.replace_spaces.unwrap_or(false) {
+        name = name.replace(" ", "_");
+    }
+
+    // 4. Formatação de Maiúsculas/Minúsculas
+    if let Some(case) = &action.case_format {
+        if case == "UPPER" {
+            name = name.to_uppercase();
+        } else if case == "LOWER" {
+            name = name.to_lowercase();
+        }
+    }
+
+    name
+}
+
+fn resolve_destination_path(file: &Path, action: &RuleAction) -> PathBuf {
+    let (ano, mes, dia, ext, tipo_doc, filename_original, _, _, _) = extract_file_data(file);
+    
+    // ⚡ O motor limpa o nome ANTES de construir o caminho final
+    let filename_hygienized = apply_filename_hygiene(&filename_original, action);
+
+    let mut resolved = action.target_pattern.clone();
     resolved = resolved.replace("{ano}", &ano);
     resolved = resolved.replace("{mes}", &mes);
     resolved = resolved.replace("{dia}", &dia);
     resolved = resolved.replace("{extensao}", &ext);
     resolved = resolved.replace("{tipo_doc}", &tipo_doc);
-    resolved = resolved.replace("{filename}", &filename);
+    resolved = resolved.replace("{filename}", &filename_hygienized);
 
     let mut dest_path = PathBuf::from(resolved);
-    if pattern.ends_with('/') || pattern.ends_with('\\') || dest_path.extension().is_none() {
-        dest_path.push(file.file_name().unwrap());
+    
+    // Se o padrão terminar com barra (indicando diretório) OU não tiver extensão,
+    // o Rust entende que a regra apenas "Moveu a pasta" e preserva o nome limpo do arquivo com a extensão original.
+    if action.target_pattern.ends_with('/') || action.target_pattern.ends_with('\\') || dest_path.extension().is_none() {
+        let final_file_name = if ext.is_empty() {
+            filename_hygienized
+        } else {
+            format!("{}.{}", filename_hygienized, ext)
+        };
+        dest_path.push(final_file_name);
     }
+    
     dest_path
 }
 
@@ -440,8 +509,19 @@ pub async fn run_simulation(rule_id: i64) -> Result<Vec<DryRunResult>, String> {
     let src = validate_secure_path(Path::new(&rule.source_directory))?;
 
     let mut results = Vec::new();
-    let action_pattern = rule.actions.first().map(|a| a.target_pattern.as_str()).unwrap_or("");
-    let action_type = rule.actions.first().map(|a| a.action_type.as_str()).unwrap_or("MOVE");
+    let dummy_action = RuleAction {
+        id: None,
+        action_type: "MOVE".into(),
+        target_pattern: "".into(),
+        clean_accents: Some(false),
+        replace_spaces: Some(false),
+        case_format: Some("NONE".into()),
+        regex_pattern: None,
+        regex_replacement: None,
+    };
+    
+    let action_obj = rule.actions.first().unwrap_or(&dummy_action);
+    let action_type = action_obj.action_type.as_str();
 
     for entry in WalkDir::new(&src).max_depth(1).into_iter().filter_map(|e| e.ok()) {
         let p = entry.path();
@@ -511,7 +591,7 @@ pub async fn run_simulation(rule_id: i64) -> Result<Vec<DryRunResult>, String> {
             };
 
             if rule_matches {
-                let dest = resolve_destination_path(p, action_pattern);
+                let dest = resolve_destination_path(p, action_obj);
                 results.push(DryRunResult {
                     filename: filename_full,
                     source: rule.source_directory.clone(),
@@ -723,9 +803,263 @@ pub fn verify_audit_integrity() -> Result<IntegrityReport, String> {
 #[tauri::command]
 pub fn toggle_sentinel_rule(rule_id: i64, active: bool) -> Result<(), String> {
     let conn = Connection::open(get_db_path()).map_err(|e| e.to_string())?;
+    
+    let current_plan = get_current_plan(&conn);
+    if current_plan.contains("core") || current_plan.contains("demonstração") {
+        return Err("A Execução Automática (Sentinel) requer o plano Foldex Pro ou superior.".into());
+    }
+
     conn.execute("UPDATE rules SET is_sentinel_active = ?1 WHERE id = ?2", params![if active { 1 } else { 0 }, rule_id])
         .map_err(|e| e.to_string())?;
     Ok(())
+}
+
+#[tauri::command]
+pub async fn smart_organize_folder(path: String) -> Result<String, String> {
+    let base_path = PathBuf::from(path);
+    
+    if !base_path.exists() || !base_path.is_dir() {
+        return Err("O diretório informado é inválido ou não existe.".into());
+    }
+
+    let result = tokio::task::spawn_blocking(move || -> Result<String, String> {
+        let conn = Connection::open(get_db_path()).map_err(|e| format!("Erro no BD: {}", e))?;
+        
+        let current_plan = get_current_plan(&conn);
+        if current_plan.contains("core") || current_plan.contains("demonstração") {
+            return Err("A Organização Inteligente de Pastas requer o plano Foldex Pro ou superior.".into());
+        }
+
+        let today_tag = Local::now().format("%d%m%Y").to_string();
+        let next_batch_num: i64 = conn.query_row(
+            "SELECT COUNT(DISTINCT batch_id) + 1 FROM audit_logs",
+            [],
+            |r| r.get(0),
+        ).unwrap_or(1);
+        
+        let batch_id = format!("Lote{:03}-{}", next_batch_num, today_tag);
+        let win_user = format!("{}\\{}", std::env::var("USERDOMAIN").unwrap_or_default(), std::env::var("USERNAME").unwrap_or_default());
+        
+        let mut prev_hash: String = conn.query_row(
+            "SELECT current_log_hash FROM audit_logs ORDER BY id DESC LIMIT 1",
+            [],
+            |row| row.get(0),
+        ).unwrap_or_else(|_| "0000000000000000000000000000000000000000000000000000000000000000".to_string());
+
+        let entries = fs::read_dir(&base_path).map_err(|e| format!("Erro ao ler diretório: {}", e))?;
+        let mut moved_count = 0;
+
+        for entry_result in entries {
+            if let Ok(entry) = entry_result {
+                let p = entry.path();
+                
+                if p.is_dir() { continue; }
+
+                let extension = p.extension()
+                    .map(|e| e.to_string_lossy().to_string().to_lowercase())
+                    .unwrap_or_default();
+
+                let category = match extension.as_str() {
+                    "pdf" | "doc" | "docx" | "txt" | "rtf" | "odt" => "Documentos",
+                    "xls" | "xlsx" | "csv" | "ods" => "Planilhas",
+                    "jpg" | "jpeg" | "png" | "gif" | "webp" | "svg" | "bmp" => "Imagens",
+                    "mp4" | "mkv" | "avi" | "mov" => "Vídeos",
+                    "mp3" | "wav" | "flac" | "aac" => "Áudios",
+                    "zip" | "rar" | "7z" | "tar" | "gz" => "Compactados",
+                    "exe" | "msi" | "apk" | "dmg" => "Instaladores",
+                    "py" | "js" | "ts" | "json" | "html" | "css" | "sql" | "rs" => "Códigos e Scripts",
+                    _ => if extension.is_empty() { "Sem Extensão" } else { "Outros" }
+                };
+
+                let target_dir = base_path.join(category);
+                
+                if !target_dir.exists() {
+                    fs::create_dir_all(&target_dir).map_err(|e| format!("Erro ao criar pasta {}: {}", category, e))?;
+                }
+
+                let file_name = p.file_name().unwrap();
+                let target_file = target_dir.join(file_name);
+
+                let final_target = if target_file.exists() {
+                    let stem = p.file_stem().unwrap().to_string_lossy();
+                    let ext = if extension.is_empty() { String::new() } else { format!(".{}", extension) };
+                    target_dir.join(format!("{}_{}{}", stem, chrono::Local::now().timestamp_millis(), ext))
+                } else {
+                    target_file
+                };
+
+                let size_bytes = p.metadata().map(|m| m.len()).unwrap_or(0) as i64;
+                let file_sha256 = compute_file_sha256(&p);
+
+                if fs::rename(&p, &final_target).is_ok() {
+                    moved_count += 1;
+                    
+                    let block_payload = format!(
+                        "{}:{}:{}:{}:{}:{}:{}:{}",
+                        prev_hash,
+                        batch_id,
+                        0, 
+                        "MOVE",
+                        p.to_string_lossy(),
+                        final_target.to_string_lossy(),
+                        file_sha256,
+                        win_user
+                    );
+                    
+                    let mut hasher = Sha256::new();
+                    hasher.update(block_payload.as_bytes());
+                    let current_hash = format!("{:x}", hasher.finalize());
+
+                    let _ = conn.execute(
+                        "INSERT INTO audit_logs (
+                            batch_id, rule_id, action_type, original_path, destination_path, 
+                            file_size_bytes, status, is_reversible, file_hash_sha256, prev_log_hash, current_log_hash, windows_user
+                        ) VALUES (?1, NULL, 'MOVE', ?2, ?3, ?4, 'SUCESSO', 1, ?5, ?6, ?7, ?8)",
+                        params![
+                            batch_id, 
+                            p.to_string_lossy().to_string(), 
+                            final_target.to_string_lossy().to_string(), 
+                            size_bytes,
+                            file_sha256,
+                            prev_hash,
+                            current_hash,
+                            win_user
+                        ],
+                    );
+                    
+                    prev_hash = current_hash;
+                }
+            }
+        }
+        
+        Ok(format!("{} arquivos organizados! A trilha de auditoria e a função 'Desfazer' foram registradas com sucesso.", moved_count))
+    }).await.map_err(|e| format!("Falha na thread de organização: {}", e))??;
+
+    Ok(result)
+}
+
+#[tauri::command]
+pub async fn generate_rule_via_ai(prompt: String, api_key: String) -> Result<String, String> {
+    if api_key.trim().is_empty() {
+        return Err("A chave da API do Google Gemini não foi configurada.".into());
+    }
+
+    let client = reqwest::Client::new();
+    let url = format!("https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key={}", api_key);
+
+    let system_prompt = r#"
+Você é uma IA assistente dentro do sistema "Foldex Enterprise". 
+Seu trabalho é converter o pedido do usuário em um JSON estrito que o React conseguirá ler para preencher um formulário de regras.
+
+REGRAS:
+1. Responda APENAS com um objeto JSON válido.
+2. O JSON deve ter este formato:
+{
+    "ruleName": "Nome descritivo da regra",
+    "actionType": "MOVE" | "COPY" | "ZIP" | "RENAME" | "DELETE",
+    "targetDir": "caminho ou padrao sugerido (ex: {ano}/{mes}/{tipo_doc})",
+    "filters": [
+        { "field_name": "Extensão", "operator": "CONTÉM", "value": "pdf", "logic_connector": "AND" }
+    ]
+}
+Campos válidos para field_name: 'Extensão', 'Tipo de Documento (Categoria)', 'Nome do Arquivo'.
+Operadores válidos: 'CONTÉM', 'É IGUAL A', 'COMEÇA COM', 'TERMINA COM'.
+"#;
+
+    let payload = serde_json::json!({
+        "contents": [{
+            "parts": [{"text": format!("{}\n\nPedido do usuário: {}", system_prompt, prompt)}]
+        }]
+    });
+
+    let res = client.post(&url)
+        .header("Content-Type", "application/json")
+        .json(&payload)
+        .send()
+        .await
+        .map_err(|e| format!("Erro de rede: {}", e))?;
+
+    if !res.status().is_success() {
+        let err_text = res.text().await.unwrap_or_default();
+        return Err(format!("Falha na API da IA: {}", err_text));
+    }
+
+    let json_res: Value = res.json().await.map_err(|e| e.to_string())?;
+    
+    if let Some(text) = json_res["candidates"][0]["content"]["parts"][0]["text"].as_str() {
+        let clean_json = text.replace("```json\n", "").replace("\n```", "").trim().to_string();
+        Ok(clean_json)
+    } else {
+        Err("A IA retornou um formato inesperado.".into())
+    }
+}
+
+#[derive(Deserialize)]
+pub struct ChatMsg {
+    pub role: String,
+    pub content: String,
+}
+
+#[tauri::command]
+pub async fn chat_with_foldex_agent(messages: Vec<ChatMsg>, api_key: String) -> Result<String, String> {
+    if api_key.trim().is_empty() {
+        return Err("A chave da API do Google Gemini não foi configurada no painel de Configurações.".into());
+    }
+
+    let client = reqwest::Client::new();
+    let url = format!("https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key={}", api_key);
+
+    let system_prompt = r#"
+Você é o "FOLDEX Agent", a Inteligência Artificial corporativa do sistema Foldex Enterprise (by BINAVER).
+
+DIRETRIZES DE COMPORTAMENTO:
+1. NUNCA repita a sua apresentação (ex: "Olá, eu sou o Foldex Agent"). Seja direto, prestativo e converse naturalmente.
+2. Responda de forma amigável, técnica e concisa (textos curtos).
+
+BASE DE CONHECIMENTO DO SISTEMA FOLDEX:
+- O Foldex é um software local de Governança e Automação de Arquivos (Respeita a LGPD).
+- Telas principais: Construtor de Regras, Explorador de Pastas, Simulação, Auditoria/Rollback, Backups e Configurações.
+- Construtor de Regras: Cria automações lendo extensões, nomes ou datas. Ações possíveis: Mover, Copiar, Zipar, Renomear, Excluir.
+- Auto-Organização (Smart Organize): Um botão mágico que varre uma pasta bagunçada e separa tudo em subpastas automaticamente.
+- Auditoria e Rollback: Todas as ações geram logs inalteráveis com Hash SHA-256. Se o usuário errar, ele pode ir na tela de Auditoria e clicar em "Desfazer (Rollback)".
+- Backups e Cofres: Suporta criptografia AES-256 local e envio para nuvem via servidor FTP.
+"#;
+
+    let mut gemini_contents = Vec::new();
+    for msg in messages {
+        let role = if msg.role == "ai" { "model" } else { "user" };
+        gemini_contents.push(serde_json::json!({
+            "role": role,
+            "parts": [{"text": msg.content}]
+        }));
+    }
+
+    let payload = serde_json::json!({
+        "system_instruction": {
+            "parts": [{"text": system_prompt}]
+        },
+        "contents": gemini_contents
+    });
+
+    let res = client.post(&url)
+        .header("Content-Type", "application/json")
+        .json(&payload)
+        .send()
+        .await
+        .map_err(|e| format!("Erro de rede ao conectar com a IA: {}", e))?;
+
+    if !res.status().is_success() {
+        let err_text = res.text().await.unwrap_or_default();
+        return Err(format!("Falha na API da IA: {}", err_text));
+    }
+
+    let json_res: serde_json::Value = res.json().await.map_err(|e| e.to_string())?;
+    
+    if let Some(text) = json_res["candidates"][0]["content"]["parts"][0]["text"].as_str() {
+        Ok(text.trim().to_string())
+    } else {
+        Err("A IA processou o pedido, mas a resposta veio em um formato desconhecido.".into())
+    }
 }
 
 #[tauri::command]
@@ -856,7 +1190,6 @@ pub fn rollback_single_item(audit_id: i64) -> Result<(), String> {
     }
 }
 
-// ⚡ NOVO COMANDO: ESTORNO EM MASSA DE ITENS SELECIONADOS
 #[tauri::command]
 pub fn rollback_multiple_items(audit_ids: Vec<i64>) -> Result<usize, String> {
     if audit_ids.is_empty() {

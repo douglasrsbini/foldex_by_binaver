@@ -6,6 +6,8 @@ use walkdir::WalkDir;
 use zip::write::{SimpleFileOptions, ZipWriter};
 use zip::AesMode;
 use serde::{Deserialize, Serialize};
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
 
 #[allow(dead_code)]
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -119,61 +121,112 @@ pub async fn select_folder_dialog(_title: String) -> Result<Option<String>, Stri
 #[tauri::command]
 pub fn list_drives() -> Result<Vec<DriveInfo>, String> {
     let mut drives = Vec::new();
-    for letter in b'A'..=b'Z' {
-        let drive_path = format!("{}:\\", letter as char);
-        if Path::new(&drive_path).exists() {
-            drives.push(DriveInfo {
-                name: format!("Disco Local ({}:)", letter as char),
-                path: drive_path,
-            });
+
+    #[cfg(target_os = "windows")]
+    {
+        use std::process::Command;
+        // ⚡ Usa o WMI nativo do Windows para listar apenas os discos válidos e conectados.
+        // Isso evita o travamento (timeout) de 30 segundos causado por unidades de rede desconectadas.
+        let output = Command::new("wmic")
+            .args(["logicaldisk", "get", "name"])
+            .creation_flags(0x08000000) // Esconde a janela do CMD
+            .output();
+
+        if let Ok(cmd_res) = output {
+            let result_str = String::from_utf8_lossy(&cmd_res.stdout);
+            for line in result_str.lines() {
+                let trimmed = line.trim();
+                // Pega apenas as linhas que têm o formato "C:", "D:", etc.
+                if trimmed.len() == 2 && trimmed.ends_with(':') {
+                    drives.push(DriveInfo {
+                        name: format!("Disco Local ({})", trimmed),
+                        path: format!("{}\\", trimmed),
+                    });
+                }
+            }
+        } else {
+            // Fallback ultra-rápido caso o WMIC falhe (apenas C e D)
+            for letter in ['C', 'D'] {
+                let drive_path = format!("{}:\\", letter);
+                if Path::new(&drive_path).exists() {
+                    drives.push(DriveInfo {
+                        name: format!("Disco Local ({}:)", letter),
+                        path: drive_path,
+                    });
+                }
+            }
         }
     }
-    if drives.is_empty() {
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        // Para Mac e Linux, exibe a raiz.
         drives.push(DriveInfo { name: "Diretório Raiz".into(), path: "/".into() });
     }
+
     Ok(drives)
 }
 
+// ⚡ COMANDO OTIMIZADO PARA ALTA PERFORMANCE
 #[tauri::command]
-pub fn list_directory_contents(path: String) -> Result<Vec<FileItem>, String> {
-    let target_path = Path::new(&path);
-    if !target_path.exists() {
-        return Err("O diretório informado não existe.".into());
-    }
+pub async fn list_directory_contents(path: String) -> Result<Vec<FileItem>, String> {
+    // ⚡ Deslocamos a leitura pesada para o Tokio em background
+    let items = tokio::task::spawn_blocking(move || -> Result<Vec<FileItem>, String> {
+        let target_path = Path::new(&path);
+        if !target_path.exists() {
+            return Err("O diretório informado não existe.".into());
+        }
 
-    let entries = fs::read_dir(target_path).map_err(|e| format!("Erro ao ler diretório: {}", e))?;
-    let mut items = Vec::new();
+        let entries = fs::read_dir(target_path).map_err(|e| format!("Erro ao ler diretório: {}", e))?;
+        let mut items = Vec::new();
 
-    for entry in entries.flatten() {
-        let p = entry.path();
-        let meta = p.metadata().ok();
-        
-        let name = p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
-        let is_dir = p.is_dir();
-        let size_bytes = if is_dir { 0 } else { meta.as_ref().map(|m| m.len()).unwrap_or(0) };
-        let size_formatted = format_file_size(size_bytes);
-        
-        let extension = p.extension().map(|e| e.to_string_lossy().to_string().to_lowercase()).unwrap_or_default();
+        for entry_result in entries {
+            if let Ok(entry) = entry_result {
+                let p = entry.path();
+                let name = entry.file_name().to_string_lossy().to_string();
+                
+                // ⚡ Lê do cache rápido do OS ao invés do caminho completo
+                let meta = entry.metadata().ok();
+                let is_dir = entry.file_type().map(|ft| ft.is_dir()).unwrap_or(false);
+                let size_bytes = if is_dir { 0 } else { meta.as_ref().map(|m| m.len()).unwrap_or(0) };
+                let size_formatted = format_file_size(size_bytes);
+                
+                let extension = if is_dir {
+                    String::new()
+                } else {
+                    p.extension().map(|e| e.to_string_lossy().to_string().to_lowercase()).unwrap_or_default()
+                };
 
-        let formatted_time = meta.as_ref()
-            .and_then(|m| m.modified().ok())
-            .map(|sys_time| {
-                let dt: chrono::DateTime<chrono::Local> = sys_time.into();
-                dt.format("%d/%m/%Y %H:%M").to_string()
-            })
-            .unwrap_or_else(|| "--/--/---- --:--".to_string());
+                let formatted_time = meta.as_ref()
+                    .and_then(|m| m.modified().ok())
+                    .map(|sys_time| {
+                        let dt: chrono::DateTime<chrono::Local> = sys_time.into();
+                        dt.format("%d/%m/%Y %H:%M").to_string()
+                    })
+                    .unwrap_or_else(|| "--/--/---- --:--".to_string());
 
-        items.push(FileItem {
-            name, path: p.to_string_lossy().to_string(), is_dir, size_bytes, size: size_bytes,
-            size_formatted, extension, last_modified: formatted_time.clone(), modified_at: formatted_time,
+                items.push(FileItem {
+                    name, 
+                    path: p.to_string_lossy().to_string(), 
+                    is_dir, 
+                    size_bytes, 
+                    size: size_bytes,
+                    size_formatted, 
+                    extension, 
+                    last_modified: formatted_time.clone(), 
+                    modified_at: formatted_time,
+                });
+            }
+        }
+
+        items.sort_by(|a, b| match (a.is_dir, b.is_dir) {
+            (true, false) => std::cmp::Ordering::Less,
+            (false, true) => std::cmp::Ordering::Greater,
+            _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
         });
-    }
 
-    items.sort_by(|a, b| match (a.is_dir, b.is_dir) {
-        (true, false) => std::cmp::Ordering::Less,
-        (false, true) => std::cmp::Ordering::Greater,
-        _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
-    });
+        Ok(items)
+    }).await.map_err(|e| format!("Falha na thread do explorador: {}", e))??;
 
     Ok(items)
 }
@@ -351,7 +404,6 @@ pub fn open_item_natively(path: String) -> Result<(), String> {
     Ok(())
 }
 
-// ⚡ NOVO COMANDO: Abrir Com... (Abre o diálogo nativo de escolha de aplicativos do sistema)
 #[tauri::command]
 pub fn open_with_dialog(path: String) -> Result<(), String> {
     use std::process::Command;

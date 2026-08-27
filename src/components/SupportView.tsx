@@ -17,6 +17,7 @@ import {
   ChevronRight,
   Search
 } from 'lucide-react';
+import { useTranslation } from 'react-i18next'; // ⚡ Óculos Mágicos
 
 interface SupportViewProps {
   accentColor: string;
@@ -24,30 +25,33 @@ interface SupportViewProps {
 }
 
 export const SupportView: React.FC<SupportViewProps> = ({ accentColor, onOpenTour }) => {
+  const { t } = useTranslation(); // ⚡ Instância do tradutor ativada
+
   const [activeManualTopic, setActiveManualTopic] = useState<string>('intro');
   const [manualSearch, setManualSearch] = useState('');
 
+  // ⚡ Tópicos renderizados de forma limpa usando fragmentos de tradução para manter os bolds <strong>
   const manualTopics = [
     {
       id: 'intro',
-      title: 'Visão Geral e Segurança',
+      title: t('support.topics.intro_title'),
       icon: BookOpen,
       content: (
         <div className="space-y-3">
           <h4 className="text-xs font-bold text-slate-800 dark:text-white uppercase tracking-wider">
-            O que é o Binaver Foldex Enterprise?
+            {t('support.topics.intro_h4')}
           </h4>
           <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
-            O <strong>Binaver Foldex</strong> atua como um assistente digital automático: ele monitora os arquivos que chegam nas suas pastas, confere as regras cadastradas e organiza tudo no destino correto sem intervenção manual.
+            <strong>Binaver Foldex</strong> {t('support.topics.intro_p1_1')}
           </p>
           <div className="p-3.5 bg-blue-50/60 dark:bg-blue-950/30 rounded-xl border border-blue-200 dark:border-blue-900 space-y-2">
             <span className="text-[11px] font-bold text-blue-900 dark:text-blue-200 block">
-              🛡️ Privacidade e LGPD (Zero-Knowledge):
+              {t('support.topics.intro_badge')}
             </span>
             <ul className="text-xs text-slate-600 dark:text-slate-300 space-y-1">
-              <li>• Nenhum arquivo ou dado corporativo é enviado para a nuvem.</li>
-              <li>• Toda a triagem, renomeação e compressão é executada 100% no hardware do seu computador.</li>
-              <li>• Trilha de auditoria forense criptografada com assinatura SHA-256 em cada ação.</li>
+              <li>{t('support.topics.intro_li1')}</li>
+              <li>{t('support.topics.intro_li2')}</li>
+              <li>{t('support.topics.intro_li3')}</li>
             </ul>
           </div>
         </div>
@@ -55,40 +59,40 @@ export const SupportView: React.FC<SupportViewProps> = ({ accentColor, onOpenTou
     },
     {
       id: 'rules',
-      title: 'Como Criar Regras',
+      title: t('support.topics.rules_title'),
       icon: FolderPlus,
       content: (
         <div className="space-y-3">
           <h4 className="text-xs font-bold text-slate-800 dark:text-white uppercase tracking-wider">
-            Passo a Passo: Criando sua Primeira Regra
+            {t('support.topics.rules_h4')}
           </h4>
           <ol className="text-xs text-slate-600 dark:text-slate-300 space-y-2.5 list-decimal pl-4">
-            <li><strong>Nome:</strong> Dê um nome objetivo (ex: <em>Organizar Notas Fiscais e Boletos</em>).</li>
-            <li><strong>Pasta de Origem:</strong> Selecione de onde os arquivos vão sair (ex: <code>C:\Users\Downloads</code>).</li>
-            <li><strong>Filtros:</strong> Escolha critérios como Extensão, Categoria, Nome ou Data (ex: <code>Extensão É IGUAL A pdf</code>).</li>
-            <li><strong>Ação:</strong> Escolha <code>MOVER</code>, <code>COPIAR</code> ou <code>COMPACTAR (.ZIP)</code>.</li>
-            <li><strong>Destino Dinâmico:</strong> Em <em>Criar Nova Pasta</em>, use etiquetas automáticas como <code>{'{ano}'}/{'{mes}'}/{'{tipo_doc}'}</code>.</li>
-            <li><strong>Salvar:</strong> A regra é gravada com segurança no banco SQLite local.</li>
+            <li><strong>{t('support.topics.rules_li1_strong')}</strong> {t('support.topics.rules_li1_text')}</li>
+            <li><strong>{t('support.topics.rules_li2_strong')}</strong> {t('support.topics.rules_li2_text')}</li>
+            <li><strong>{t('support.topics.rules_li3_strong')}</strong> {t('support.topics.rules_li3_text')}</li>
+            <li><strong>{t('support.topics.rules_li4_strong')}</strong> {t('support.topics.rules_li4_text')}</li>
+            <li><strong>{t('support.topics.rules_li5_strong')}</strong> {t('support.topics.rules_li5_text')}</li>
+            <li><strong>{t('support.topics.rules_li6_strong')}</strong> {t('support.topics.rules_li6_text')}</li>
           </ol>
         </div>
       ),
     },
     {
       id: 'autopilot',
-      title: 'Execução Automática',
+      title: t('support.topics.autopilot_title'),
       icon: Zap,
       content: (
         <div className="space-y-3">
           <h4 className="text-xs font-bold text-slate-800 dark:text-white uppercase tracking-wider">
-            Automação Contínua em Segundo Plano
+            {t('support.topics.autopilot_h4')}
           </h4>
           <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
-            A <strong>Execução Automática</strong> monitora suas pastas silenciosamente. Ao salvar ou baixar um arquivo, ele organiza o documento sem precisar abrir a tela do aplicativo.
+            <strong>{t('support.topics.autopilot_strong')}</strong> {t('support.topics.autopilot_p1_1')}
           </p>
           <div className="p-3.5 bg-slate-50 dark:bg-[#18181b] rounded-xl border border-slate-200 dark:border-[#2e2e34] space-y-2">
-            <span className="text-xs font-bold text-slate-800 dark:text-white block">Como Ativar:</span>
+            <span className="text-xs font-bold text-slate-800 dark:text-white block">{t('support.topics.autopilot_badge')}</span>
             <p className="text-[11px] text-slate-500 leading-relaxed">
-              No painel lateral de <strong>Regras Cadastradas</strong>, clique no botão <code>Execução Automática: Desligado</code>. Ele mudará para verde (<code>Execução Automática: Ligado</code>).
+              {t('support.topics.autopilot_p2_1')} <strong>{t('support.topics.autopilot_p2_strong1')}</strong>{t('support.topics.autopilot_p2_2')} <code>{t('support.topics.autopilot_p2_code1')}</code>{t('support.topics.autopilot_p2_3')}<code>{t('support.topics.autopilot_p2_code2')}</code>{t('support.topics.autopilot_p2_4')}
             </p>
           </div>
         </div>
@@ -96,57 +100,57 @@ export const SupportView: React.FC<SupportViewProps> = ({ accentColor, onOpenTou
     },
     {
       id: 'simulation',
-      title: 'Simulação Segura (Dry-Run)',
+      title: t('support.topics.sim_title'),
       icon: FlaskConical,
       content: (
         <div className="space-y-3">
           <h4 className="text-xs font-bold text-slate-800 dark:text-white uppercase tracking-wider">
-            Testando Antes de Movimentar
+            {t('support.topics.sim_h4')}
           </h4>
           <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
-            Use a tela de <strong>Simulação e Execução</strong> para testar uma ou mais regras selecionadas antes de movimentar arquivos reais.
+            Use a tela de <strong>{t('support.topics.sim_strong')}</strong> {t('support.topics.sim_p1_1')}
           </p>
         </div>
       ),
     },
     {
       id: 'rollback',
-      title: 'Auditoria e Rollback',
+      title: t('support.topics.roll_title'),
       icon: History,
       content: (
         <div className="space-y-3">
           <h4 className="text-xs font-bold text-slate-800 dark:text-white uppercase tracking-wider">
-            Tranquilidade Total: Desfazendo Operações
+            {t('support.topics.roll_h4')}
           </h4>
           <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
-            Se uma regra mover arquivos indesejados, basta acessar <strong>Auditoria e Rollback</strong> e clicar em <strong>"Desfazer Último Lote (Rollback)"</strong> para restaurar todos os arquivos aos locais de origem.
+            {t('support.topics.roll_p1_1')} <strong>{t('support.topics.roll_strong1')}</strong> {t('support.topics.roll_p1_2')} <strong>{t('support.topics.roll_strong2')}</strong> {t('support.topics.roll_p1_3')}
           </p>
         </div>
       ),
     },
     {
       id: 'zip',
-      title: 'Compactação em .ZIP',
+      title: t('support.topics.zip_title'),
       icon: FolderArchive,
       content: (
         <div className="space-y-3">
           <h4 className="text-xs font-bold text-slate-800 dark:text-white uppercase tracking-wider">
-            Compressão Nativa de Alto Desempenho
+            {t('support.topics.zip_h4')}
           </h4>
           <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
-            No <strong>Explorador de Pastas</strong>, selecione múltiplos itens, clique com o botão direito e selecione <strong>"Compactar para .ZIP"</strong>.
+            {t('support.topics.zip_p1_1')} <strong>{t('support.topics.zip_strong1')}</strong>{t('support.topics.zip_p1_2')} <strong>{t('support.topics.zip_strong2')}</strong>
           </p>
         </div>
       ),
     },
   ];
 
-  const filteredTopics = manualTopics.filter(t => 
-    t.title.toLowerCase().includes(manualSearch.toLowerCase()) || 
-    t.id.toLowerCase().includes(manualSearch.toLowerCase())
+  const filteredTopics = manualTopics.filter(tItem => 
+    tItem.title.toLowerCase().includes(manualSearch.toLowerCase()) || 
+    tItem.id.toLowerCase().includes(manualSearch.toLowerCase())
   );
 
-  const selectedTopic = manualTopics.find(t => t.id === activeManualTopic) || manualTopics[0];
+  const selectedTopic = manualTopics.find(tItem => tItem.id === activeManualTopic) || manualTopics[0];
 
   return (
     <div className="flex flex-col h-full gap-4 overflow-y-auto pr-1 select-none w-full">
@@ -157,9 +161,9 @@ export const SupportView: React.FC<SupportViewProps> = ({ accentColor, onOpenTou
           <Headphones size={18} style={{ color: accentColor }} />
           <div>
             <h2 className="text-xs font-bold text-slate-800 dark:text-white uppercase tracking-wider">
-              Central de Atendimento e Manual do Usuário
+              {t('support.header_title')}
             </h2>
-            <p className="text-[11px] text-slate-400">Documentação técnica oficial, suporte corporativo e manuais práticos</p>
+            <p className="text-[11px] text-slate-400">{t('support.header_subtitle')}</p>
           </div>
         </div>
 
@@ -170,13 +174,13 @@ export const SupportView: React.FC<SupportViewProps> = ({ accentColor, onOpenTou
               className="px-3.5 py-1.5 rounded-xl bg-blue-50 dark:bg-blue-950/40 text-blue-600 hover:bg-blue-100 text-xs font-bold flex items-center gap-1.5 border border-blue-200 dark:border-blue-800 transition-colors"
             >
               <Sparkles size={14} />
-              <span>Tour Interativo</span>
+              <span>{t('support.btn_tour')}</span>
             </button>
           )}
 
           <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-green-50 dark:bg-green-950/40 text-green-600 border border-green-200 dark:border-green-800">
             <ShieldCheck size={14} />
-            <span>Suporte Enterprise Ativo</span>
+            <span>{t('support.badge_enterprise')}</span>
           </div>
         </div>
       </div>
@@ -187,7 +191,7 @@ export const SupportView: React.FC<SupportViewProps> = ({ accentColor, onOpenTou
           <div className="flex items-center gap-2">
             <BookOpen size={16} style={{ color: accentColor }} />
             <h3 className="text-xs font-bold text-slate-800 dark:text-white uppercase tracking-wider">
-              Manual Interativo do Usuário (Guia Passo a Passo)
+              {t('support.manual_title')}
             </h3>
           </div>
 
@@ -195,7 +199,7 @@ export const SupportView: React.FC<SupportViewProps> = ({ accentColor, onOpenTou
             <Search size={13} className="absolute left-2.5 top-2 text-slate-400" />
             <input
               type="text"
-              placeholder="Buscar no manual..."
+              placeholder={t('support.manual_search_ph')}
               value={manualSearch}
               onChange={(e) => setManualSearch(e.target.value)}
               className="w-full pl-8 pr-2.5 py-1 text-xs bg-slate-50 dark:bg-[#18181b] border border-slate-200 dark:border-[#2e2e34] rounded-xl text-slate-800 dark:text-white outline-none"
@@ -243,8 +247,8 @@ export const SupportView: React.FC<SupportViewProps> = ({ accentColor, onOpenTou
             <div className="w-9 h-9 rounded-xl bg-blue-50 dark:bg-blue-950/40 text-blue-600 flex items-center justify-center">
               <Mail size={18} />
             </div>
-            <h3 className="text-xs font-bold text-slate-800 dark:text-white">E-mail Corporativo</h3>
-            <p className="text-[11px] text-slate-400 leading-relaxed">Para dúvidas técnicas, homologações e suporte a faturamento:</p>
+            <h3 className="text-xs font-bold text-slate-800 dark:text-white">{t('support.channels.email_title')}</h3>
+            <p className="text-[11px] text-slate-400 leading-relaxed">{t('support.channels.email_desc')}</p>
             <p className="text-xs font-mono font-bold text-slate-700 dark:text-slate-200">contato@binaver.com</p>
           </div>
 
@@ -252,7 +256,7 @@ export const SupportView: React.FC<SupportViewProps> = ({ accentColor, onOpenTou
             onClick={() => window.open('mailto:contato@binaver.com', '_blank')}
             className="w-full py-2 rounded-xl bg-slate-100 dark:bg-[#27272a] hover:bg-slate-200 text-xs font-bold text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-[#383840] flex items-center justify-center gap-1.5 transition-colors"
           >
-            <span>Enviar Mensagem</span>
+            <span>{t('support.channels.email_btn')}</span>
             <ExternalLink size={12} />
           </button>
         </div>
@@ -263,16 +267,16 @@ export const SupportView: React.FC<SupportViewProps> = ({ accentColor, onOpenTou
             <div className="w-9 h-9 rounded-xl bg-green-50 dark:bg-green-950/40 text-green-600 flex items-center justify-center">
               <MessageSquare size={18} />
             </div>
-            <h3 className="text-xs font-bold text-slate-800 dark:text-white">WhatsApp Corporativo</h3>
-            <p className="text-[11px] text-slate-400 leading-relaxed">Atendimento em tempo real para clientes e parceiros:</p>
-            <p className="text-xs font-bold text-slate-700 dark:text-slate-200">Segunda a Sexta (08h às 18h)</p>
+            <h3 className="text-xs font-bold text-slate-800 dark:text-white">{t('support.channels.wpp_title')}</h3>
+            <p className="text-[11px] text-slate-400 leading-relaxed">{t('support.channels.wpp_desc')}</p>
+            <p className="text-xs font-bold text-slate-700 dark:text-slate-200">{t('support.channels.wpp_hours')}</p>
           </div>
 
           <button
             onClick={() => window.open('https://binaver.com', '_blank')}
             className="w-full py-2 rounded-xl bg-slate-100 dark:bg-[#27272a] hover:bg-slate-200 text-xs font-bold text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-[#383840] flex items-center justify-center gap-1.5 transition-colors"
           >
-            <span>Falar com Consultor</span>
+            <span>{t('support.channels.wpp_btn')}</span>
             <ExternalLink size={12} />
           </button>
         </div>
@@ -283,8 +287,8 @@ export const SupportView: React.FC<SupportViewProps> = ({ accentColor, onOpenTou
             <div className="w-9 h-9 rounded-xl bg-purple-50 dark:bg-purple-950/40 text-purple-600 flex items-center justify-center">
               <Globe size={18} />
             </div>
-            <h3 className="text-xs font-bold text-slate-800 dark:text-white">Portal da Binaver</h3>
-            <p className="text-[11px] text-slate-400 leading-relaxed">Gestão de licenças, manuais e novas versões:</p>
+            <h3 className="text-xs font-bold text-slate-800 dark:text-white">{t('support.channels.portal_title')}</h3>
+            <p className="text-[11px] text-slate-400 leading-relaxed">{t('support.channels.portal_desc')}</p>
             <p className="text-xs font-mono font-bold text-blue-500">https://binaver.com</p>
           </div>
 
@@ -293,7 +297,7 @@ export const SupportView: React.FC<SupportViewProps> = ({ accentColor, onOpenTou
             className="w-full py-2 rounded-xl text-white text-xs font-bold shadow-xs flex items-center justify-center gap-1.5 transition-all"
             style={{ backgroundColor: accentColor }}
           >
-            <span>Acessar Portal</span>
+            <span>{t('support.channels.portal_btn')}</span>
             <ExternalLink size={12} />
           </button>
         </div>
@@ -305,22 +309,22 @@ export const SupportView: React.FC<SupportViewProps> = ({ accentColor, onOpenTou
         <div className="flex items-center gap-2 border-b border-slate-100 dark:border-[#2e2e34] pb-3">
           <FileQuestion size={16} style={{ color: accentColor }} />
           <h3 className="text-xs font-bold text-slate-800 dark:text-white uppercase tracking-wider">
-            Dúvidas Frequentes sobre o Foldex Enterprise
+            {t('support.faq.title')}
           </h3>
         </div>
 
         <div className="space-y-3 text-xs">
           <div className="p-3 bg-slate-50 dark:bg-[#18181b] rounded-xl border border-slate-200 dark:border-[#2e2e34] space-y-1">
-            <h4 className="font-bold text-slate-800 dark:text-white">O que acontece se uma regra mover um arquivo por engano?</h4>
+            <h4 className="font-bold text-slate-800 dark:text-white">{t('support.faq.q1')}</h4>
             <p className="text-slate-500 dark:text-slate-400 text-[11px]">
-              O Foldex possui trilha de auditoria forense integrada. Basta acessar a aba <strong>Auditoria e Rollback</strong> e clicar em <strong>"Desfazer Lote"</strong> para restaurar todos os arquivos aos locais de origem com 1 clique.
+              {t('support.faq.a1_1')} <strong>{t('support.faq.a1_strong1')}</strong> {t('support.faq.a1_2')} <strong>{t('support.faq.a1_strong2')}</strong> {t('support.faq.a1_3')}
             </p>
           </div>
 
           <div className="p-3 bg-slate-50 dark:bg-[#18181b] rounded-xl border border-slate-200 dark:border-[#2e2e34] space-y-1">
-            <h4 className="font-bold text-slate-800 dark:text-white">Meus arquivos são enviados para servidores externos?</h4>
+            <h4 className="font-bold text-slate-800 dark:text-white">{t('support.faq.q2')}</h4>
             <p className="text-slate-500 dark:text-slate-400 text-[11px]">
-              Não. O Foldex opera sob o princípio de <em>Zero-Knowledge</em> em conformidade estrita com a <strong>LGPD</strong>. 100% da leitura, renomeação e compressão é executada localmente no hardware da máquina.
+              {t('support.faq.a2_1')} <em>{t('support.faq.a2_em')}</em> {t('support.faq.a2_2')} <strong>{t('support.faq.a2_strong1')}</strong>{t('support.faq.a2_3')}
             </p>
           </div>
         </div>
@@ -328,9 +332,11 @@ export const SupportView: React.FC<SupportViewProps> = ({ accentColor, onOpenTou
 
       {/* Rodapé Institucional */}
       <div className="p-4 bg-slate-50 dark:bg-[#18181b] rounded-2xl border border-slate-200 dark:border-[#2e2e34] text-center text-xs text-slate-400">
-        Desenvolvido por <strong>BINAVER Soluções Tecnológicas - Ltda</strong> • Primavera do Leste / Brasil
+        {t('support.footer')} <strong>{t('support.footer_company')}</strong> • {t('support.footer_location')}
       </div>
 
     </div>
   );
 };
+
+export default SupportView;

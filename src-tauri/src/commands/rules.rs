@@ -5,6 +5,14 @@ use rusqlite::{params, Connection, Result};
 #[tauri::command]
 pub fn get_rules() -> Result<Vec<Rule>, String> {
     let conn = Connection::open(get_db_path()).map_err(|e| e.to_string())?;
+    
+    // ⚡ Tenta adicionar as colunas novas caso o banco seja antigo (Evita quebrar o app de quem já instalou)
+    let _ = conn.execute("ALTER TABLE rule_actions ADD COLUMN clean_accents INTEGER DEFAULT 0", []);
+    let _ = conn.execute("ALTER TABLE rule_actions ADD COLUMN replace_spaces INTEGER DEFAULT 0", []);
+    let _ = conn.execute("ALTER TABLE rule_actions ADD COLUMN case_format TEXT DEFAULT 'NONE'", []);
+    let _ = conn.execute("ALTER TABLE rule_actions ADD COLUMN regex_pattern TEXT", []);
+    let _ = conn.execute("ALTER TABLE rule_actions ADD COLUMN regex_replacement TEXT", []);
+
     let mut stmt = conn
         .prepare("SELECT id, custom_code, name, source_directory, logic_operator, is_active, conflict_policy, is_sentinel_active FROM rules WHERE is_active = 1 ORDER BY id DESC")
         .map_err(|e| e.to_string())?;
@@ -47,8 +55,9 @@ pub fn get_rules() -> Result<Vec<Rule>, String> {
             .map_err(|e| e.to_string())?;
         rule.filters = f_iter.flatten().collect();
 
+        // ⚡ Leitura dos novos campos de higienização
         let mut a_stmt = conn
-            .prepare("SELECT id, action_type, target_pattern FROM rule_actions WHERE rule_id = ?")
+            .prepare("SELECT id, action_type, target_pattern, clean_accents, replace_spaces, case_format, regex_pattern, regex_replacement FROM rule_actions WHERE rule_id = ?")
             .map_err(|e| e.to_string())?;
         let a_iter = a_stmt
             .query_map([r_id], |row| {
@@ -56,6 +65,11 @@ pub fn get_rules() -> Result<Vec<Rule>, String> {
                     id: Some(row.get(0)?),
                     action_type: row.get(1)?,
                     target_pattern: row.get(2)?,
+                    clean_accents: Some(row.get::<_, Option<i64>>(3)?.unwrap_or(0) == 1),
+                    replace_spaces: Some(row.get::<_, Option<i64>>(4)?.unwrap_or(0) == 1),
+                    case_format: row.get(5)?,
+                    regex_pattern: row.get(6)?,
+                    regex_replacement: row.get(7)?,
                 })
             })
             .map_err(|e| e.to_string())?;
@@ -70,6 +84,14 @@ pub fn get_rules() -> Result<Vec<Rule>, String> {
 #[tauri::command]
 pub fn save_rule(rule: Rule) -> Result<String, String> {
     let mut conn = Connection::open(get_db_path()).map_err(|e| e.to_string())?;
+    
+    // Garantia de schema para updates
+    let _ = conn.execute("ALTER TABLE rule_actions ADD COLUMN clean_accents INTEGER DEFAULT 0", []);
+    let _ = conn.execute("ALTER TABLE rule_actions ADD COLUMN replace_spaces INTEGER DEFAULT 0", []);
+    let _ = conn.execute("ALTER TABLE rule_actions ADD COLUMN case_format TEXT DEFAULT 'NONE'", []);
+    let _ = conn.execute("ALTER TABLE rule_actions ADD COLUMN regex_pattern TEXT", []);
+    let _ = conn.execute("ALTER TABLE rule_actions ADD COLUMN regex_replacement TEXT", []);
+
     let tx = conn.transaction().map_err(|e| e.to_string())?;
     let policy = rule.conflict_policy.as_deref().unwrap_or("AUTONUMBER");
     let sentinel = if rule.is_sentinel_active.unwrap_or(false) { 1 } else { 0 };
@@ -90,10 +112,18 @@ pub fn save_rule(rule: Rule) -> Result<String, String> {
             ).map_err(|e| e.to_string())?;
         }
 
+        // ⚡ Gravando os novos campos na edição
         for a in &rule.actions {
             tx.execute(
-                "INSERT INTO rule_actions (rule_id, action_type, target_pattern) VALUES (?1, ?2, ?3)",
-                params![id, a.action_type, a.target_pattern],
+                "INSERT INTO rule_actions (rule_id, action_type, target_pattern, clean_accents, replace_spaces, case_format, regex_pattern, regex_replacement) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                params![
+                    id, a.action_type, a.target_pattern, 
+                    if a.clean_accents.unwrap_or(false) { 1 } else { 0 },
+                    if a.replace_spaces.unwrap_or(false) { 1 } else { 0 },
+                    a.case_format.as_deref().unwrap_or("NONE"),
+                    a.regex_pattern,
+                    a.regex_replacement
+                ],
             ).map_err(|e| e.to_string())?;
         }
     } else {
@@ -111,10 +141,18 @@ pub fn save_rule(rule: Rule) -> Result<String, String> {
             ).map_err(|e| e.to_string())?;
         }
 
+        // ⚡ Gravando os novos campos na criação
         for a in &rule.actions {
             tx.execute(
-                "INSERT INTO rule_actions (rule_id, action_type, target_pattern) VALUES (?1, ?2, ?3)",
-                params![new_id, a.action_type, a.target_pattern],
+                "INSERT INTO rule_actions (rule_id, action_type, target_pattern, clean_accents, replace_spaces, case_format, regex_pattern, regex_replacement) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                params![
+                    new_id, a.action_type, a.target_pattern,
+                    if a.clean_accents.unwrap_or(false) { 1 } else { 0 },
+                    if a.replace_spaces.unwrap_or(false) { 1 } else { 0 },
+                    a.case_format.as_deref().unwrap_or("NONE"),
+                    a.regex_pattern,
+                    a.regex_replacement
+                ],
             ).map_err(|e| e.to_string())?;
         }
     }

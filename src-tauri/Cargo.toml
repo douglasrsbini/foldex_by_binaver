@@ -24,9 +24,11 @@ walkdir = "2.5"
 dirs = "5.0"
 rfd = "0.14"
 notify = "6.1.1"
-reqwest = { version = "0.12", features = ["json"] }
 zip = { version = "2.4.2", features = ["aes-crypto"] }
+suppaftp = "5.3"
 tokio = { version = "1", features = ["full"] }
+reqwest = { version = "0.12", features = ["json"] }
+dotenvy = "0.15"
 
 [profile.release]
 opt-level = 3

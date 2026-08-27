@@ -37,8 +37,14 @@ export interface RuleFilter {
 }
 
 export interface RuleAction {
+  id?: number;
   action_type: string;
   target_pattern: string;
+  clean_accents?: boolean;
+  replace_spaces?: boolean;
+  case_format?: string; // 'NONE', 'UPPER', 'LOWER'
+  regex_pattern?: string;
+  regex_replacement?: string;
 }
 
 export interface Rule {
