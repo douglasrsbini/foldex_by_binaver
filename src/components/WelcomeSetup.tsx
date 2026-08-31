@@ -38,6 +38,11 @@ export const WelcomeSetup: React.FC<WelcomeSetupProps> = ({ onComplete }) => {
   ];
 
   useEffect(() => {
+    console.log('👋 [WelcomeSetup] Mounted');
+    return () => console.log('👋 [WelcomeSetup] Unmounted');
+  }, []);
+
+  useEffect(() => {
     if (step !== 0) return;
     const interval = setInterval(() => {
       setGreetingIdx((prev) => (prev + 1) % greetings.length);

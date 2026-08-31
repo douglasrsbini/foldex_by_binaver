@@ -9,7 +9,7 @@ import {
   HelpCircle, RotateCcw, FolderDown, FileSpreadsheet, 
   Image as ImageIcon, Archive, X, 
   Sparkles, LayoutGrid, Rows, RefreshCw, Layers, Send, Lock, Eraser, Code, FileSearch, Info, FileText, ArrowRight, CornerDownRight, Building, User, Users, FileCheck, Receipt, Eye,
-  ArrowLeft, CheckCircle2, ChevronRight, ChevronDown
+  ArrowLeft, CheckCircle2, ChevronRight, ChevronDown, ShieldCheck
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
@@ -61,6 +61,7 @@ export const RuleBuilder: React.FC<RuleBuilderProps> = ({ initialSource, accentC
   
   const [customCode, setCustomCode] = useState('');
   const [autoCode, setAutoCode] = useState(true);
+  const [enableSentinel, setEnableSentinel] = useState(false);
 
   const [isTemplatesModalOpen, setIsTemplatesModalOpen] = useState(false);
   const [isRulesModalOpen, setIsRulesModalOpen] = useState(false);
@@ -84,11 +85,12 @@ export const RuleBuilder: React.FC<RuleBuilderProps> = ({ initialSource, accentC
   }, [license]);
 
   const masterLogicOperator = useMemo(() => {
-    return filters.some(f => f.logic_connector === 'OR') ? 'OR' : 'AND';
+    if (!Array.isArray(filters)) return 'AND';
+    return filters.some(f => f?.logic_connector === 'OR') ? 'OR' : 'AND';
   }, [filters]);
 
   const handleMasterLogicChange = (value: string) => {
-    setFilters(prev => prev.map(f => ({ ...f, logic_connector: value })));
+    setFilters(prev => (Array.isArray(prev) ? prev : []).map(f => ({ ...f, logic_connector: value })));
   };
 
   const documentCategories = [
@@ -168,7 +170,7 @@ export const RuleBuilder: React.FC<RuleBuilderProps> = ({ initialSource, accentC
 
   useEffect(() => {
     loadRules();
-    invoke<LicenseInfo>('get_license_status').then(setLicense);
+    invoke<LicenseInfo>('get_license_status').then(setLicense).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -350,11 +352,11 @@ export const RuleBuilder: React.FC<RuleBuilderProps> = ({ initialSource, accentC
   };
 
   const addFilterRow = () => {
-    setFilters([...filters, { field_name: 'Extensão', operator: 'CONTÉM', value: '', logic_connector: masterLogicOperator }]);
+    setFilters([...(Array.isArray(filters) ? filters : []), { field_name: 'Extensão', operator: 'CONTÉM', value: '', logic_connector: masterLogicOperator }]);
   };
 
   const removeFilterRow = (idx: number) => {
-    if (filters.length <= 1) return;
+    if (!Array.isArray(filters) || filters.length <= 1) return;
     setFilters(filters.filter((_, i) => i !== idx));
   };
 
@@ -386,7 +388,7 @@ export const RuleBuilder: React.FC<RuleBuilderProps> = ({ initialSource, accentC
         setFormError("Escolha um tipo de arquivo ou configure uma regra avançada.");
         return false;
       }
-      if (showAdvancedConditions && filters.some(f => !String(f.value || '').trim() && f.field_name !== 'Extensão' && f.field_name !== 'Tipo de Documento (Categoria)')) {
+      if (showAdvancedConditions && Array.isArray(filters) && filters.some(f => !String(f?.value || '').trim() && f?.field_name !== 'Extensão' && f?.field_name !== 'Tipo de Documento (Categoria)')) {
         setFormError("Preencha todos os campos das condições avançadas.");
         return false;
       }
@@ -413,7 +415,7 @@ export const RuleBuilder: React.FC<RuleBuilderProps> = ({ initialSource, accentC
     }
   };
 
-  const handleSave = async () => {
+  const handleSaveRuleToBackend = async () => {
     if (!validateStep(3)) return;
 
     if (license && !license.is_activated && rules.length >= license.max_rules && !editingId) {
@@ -431,8 +433,9 @@ export const RuleBuilder: React.FC<RuleBuilderProps> = ({ initialSource, accentC
       source_directory: sourceDir.trim(),
       logic_operator: masterLogicOperator,
       is_active: true,
+      is_sentinel_active: enableSentinel,
       conflict_policy: conflictPolicy,
-      filters,
+      filters: Array.isArray(filters) ? filters : [],
       actions: [{ 
         action_type: actionType, 
         target_pattern: finalTarget.trim(),
@@ -452,6 +455,16 @@ export const RuleBuilder: React.FC<RuleBuilderProps> = ({ initialSource, accentC
       setIsRulesModalOpen(true);
     } catch (e) {
       alert(`Falha ao salvar regra: ${e}`);
+    }
+  };
+
+  const handleSave = async () => {
+    // Se não está no último passo (Automação), vai para o próximo passo
+    if (currentStep < 5) {
+      nextStep();
+    } else {
+      // Se está no passo de automação, salva a regra
+      await handleSaveRuleToBackend();
     }
   };
 
@@ -479,24 +492,30 @@ export const RuleBuilder: React.FC<RuleBuilderProps> = ({ initialSource, accentC
     setCurrentStep(0);
     setFurthestStep(0);
     setFormError(null);
+    setEnableSentinel(false);
   };
 
+  // ⚡ BLINDAGEM CONTRA FALHAS DO BANCO: null-safety total para não "crashar" o React.
   const filteredAndSortedRules = useMemo(() => {
+    if (!Array.isArray(rules)) return [];
+    
     let list = rules.filter(r => {
-      const matchSearch = String(r.name || '').toLowerCase().includes(ruleSearch.toLowerCase()) || 
-                          String(r.custom_code || '').toLowerCase().includes(ruleSearch.toLowerCase()) ||
-                          String(r.source_directory || '').toLowerCase().includes(ruleSearch.toLowerCase());
+      const matchSearch = String(r?.name || '').toLowerCase().includes(ruleSearch.toLowerCase()) || 
+                          String(r?.custom_code || '').toLowerCase().includes(ruleSearch.toLowerCase()) ||
+                          String(r?.source_directory || '').toLowerCase().includes(ruleSearch.toLowerCase());
       
-      const matchAction = actionFilter === 'ALL' || (r.actions && r.actions.some(a => a.action_type === actionFilter));
+      const safeActions = Array.isArray(r?.actions) ? r.actions : [];
+      const matchAction = actionFilter === 'ALL' || safeActions.some(a => a?.action_type === actionFilter);
+      
       return matchSearch && matchAction;
     });
 
     list.sort((a, b) => {
       let res = 0;
       if (sortField === 'id') {
-        res = String(a.custom_code || '').localeCompare(String(b.custom_code || ''), undefined, { numeric: true, sensitivity: 'base' });
+        res = String(a?.custom_code || '').localeCompare(String(b?.custom_code || ''), undefined, { numeric: true, sensitivity: 'base' });
       } else if (sortField === 'name') {
-        res = String(a.name || '').localeCompare(String(b.name || ''), undefined, { numeric: true, sensitivity: 'base' });
+        res = String(a?.name || '').localeCompare(String(b?.name || ''), undefined, { numeric: true, sensitivity: 'base' });
       }
       return sortOrder === 'asc' ? res : -res;
     });
@@ -504,7 +523,7 @@ export const RuleBuilder: React.FC<RuleBuilderProps> = ({ initialSource, accentC
     return list;
   }, [rules, ruleSearch, actionFilter, sortField, sortOrder]);
 
-  const stepNames = ["Nome", "Origem", "Condições", "Ação e destino", "Revisão"];
+  const stepNames = ["Nome", "Origem", "Condições", "Ação e destino", "Revisão", "Automação"];
 
   return (
     <div className="flex flex-col h-full w-full select-none max-w-7xl mx-auto overflow-hidden">
@@ -526,11 +545,19 @@ export const RuleBuilder: React.FC<RuleBuilderProps> = ({ initialSource, accentC
               <Layers size={14} className="text-blue-500" /> Usar modelo
             </button>
           )}
+          {editingId && (
+            <button 
+              onClick={resetForm}
+              className="px-4 py-2 rounded-xl bg-red-50 dark:bg-red-950/30 text-red-600 dark:text-red-400 text-xs font-bold border border-red-200 dark:border-red-800 hover:bg-red-100 dark:hover:bg-red-950/50 transition-colors flex items-center gap-2"
+            >
+              <X size={14} /> Cancelar
+            </button>
+          )}
           <button 
             onClick={() => setIsRulesModalOpen(true)}
             className="px-4 py-2 rounded-xl bg-slate-100 dark:bg-[#202024] text-slate-700 dark:text-slate-200 text-xs font-bold border border-slate-200 dark:border-[#2e2e34] hover:bg-slate-200 dark:hover:bg-[#27272a] transition-colors flex items-center gap-2"
           >
-            <ListOrdered size={14} /> Minhas regras <span className="bg-slate-200 dark:bg-[#2e2e34] px-1.5 py-0.5 rounded text-[10px]">{rules.length}</span>
+            <ListOrdered size={14} /> Minhas regras <span className="bg-slate-200 dark:bg-[#2e2e34] px-1.5 py-0.5 rounded text-[10px]">{Array.isArray(rules) ? rules.length : 0}</span>
           </button>
         </div>
       </div>
@@ -730,15 +757,15 @@ export const RuleBuilder: React.FC<RuleBuilderProps> = ({ initialSource, accentC
                       </div>
 
                       <div className="space-y-2">
-                        {filters.map((f, idx) => {
-                          const isCategory = f.field_name === 'Tipo de Documento (Categoria)';
-                          const isDate = f.field_name.includes('Data') || f.field_name === 'Data de Criação';
+                        {Array.isArray(filters) && filters.map((f, idx) => {
+                          const isCategory = f?.field_name === 'Tipo de Documento (Categoria)';
+                          const isDate = String(f?.field_name || '').includes('Data') || f?.field_name === 'Data de Criação';
 
                           return (
                             <div key={idx} className="flex items-center gap-2 p-2 bg-slate-50 dark:bg-[#13161b] border border-slate-200 dark:border-[#343a45] rounded-xl">
                               <div className="flex-1 grid grid-cols-1 sm:grid-cols-3 gap-2">
                                 <select 
-                                  value={f.field_name}
+                                  value={f?.field_name || 'Extensão'}
                                   onChange={(e) => {
                                     const nf = [...filters];
                                     nf[idx].field_name = e.target.value;
@@ -762,7 +789,7 @@ export const RuleBuilder: React.FC<RuleBuilderProps> = ({ initialSource, accentC
                                 </select>
 
                                 <select 
-                                  value={f.operator}
+                                  value={f?.operator || 'CONTÉM'}
                                   onChange={(e) => { const nf = [...filters]; nf[idx].operator = e.target.value; setFilters(nf); }}
                                   className="px-2 py-1.5 text-xs bg-white dark:bg-[#191c22] border border-slate-200 dark:border-[#2a2e37] rounded-lg text-slate-800 dark:text-white outline-none"
                                 >
@@ -787,26 +814,26 @@ export const RuleBuilder: React.FC<RuleBuilderProps> = ({ initialSource, accentC
 
                                 {isCategory ? (
                                   <select
-                                    value={f.value}
+                                    value={f?.value || 'IMAGEM'}
                                     onChange={(e) => { const nf = [...filters]; nf[idx].value = e.target.value; setFilters(nf); }}
                                     className="px-2 py-1.5 text-xs bg-white dark:bg-[#191c22] border border-slate-200 dark:border-[#2a2e37] rounded-lg text-slate-800 dark:text-white outline-none"
                                   >
                                     {documentCategories.map(cat => <option key={cat.value} value={cat.value}>{cat.label}</option>)}
                                   </select>
                                 ) : isDate ? (
-                                  f.operator === 'ESTÁ ENTRE (DATA/HORA)' ? (
+                                  f?.operator === 'ESTÁ ENTRE (DATA/HORA)' ? (
                                     <div className="flex gap-1">
-                                      <input type="date" value={String(f.value || '').split(',')[0] || ''} onChange={(e) => { const nf = [...filters]; nf[idx].value = `${e.target.value},${String(nf[idx].value || '').split(',')[1] || ''}`; setFilters(nf); }} className="w-1/2 px-2 py-1.5 text-xs bg-white dark:bg-[#191c22] border border-slate-200 dark:border-[#2a2e37] rounded-lg text-slate-800 dark:text-white outline-none dark:[color-scheme:dark]" />
-                                      <input type="date" value={String(f.value || '').split(',')[1] || ''} onChange={(e) => { const nf = [...filters]; nf[idx].value = `${String(nf[idx].value || '').split(',')[0] || ''},${e.target.value}`; setFilters(nf); }} className="w-1/2 px-2 py-1.5 text-xs bg-white dark:bg-[#191c22] border border-slate-200 dark:border-[#2a2e37] rounded-lg text-slate-800 dark:text-white outline-none dark:[color-scheme:dark]" />
+                                      <input type="date" value={String(f?.value || '').split(',')[0] || ''} onChange={(e) => { const nf = [...filters]; nf[idx].value = `${e.target.value},${String(nf[idx].value || '').split(',')[1] || ''}`; setFilters(nf); }} className="w-1/2 px-2 py-1.5 text-xs bg-white dark:bg-[#191c22] border border-slate-200 dark:border-[#2a2e37] rounded-lg text-slate-800 dark:text-white outline-none dark:[color-scheme:dark]" />
+                                      <input type="date" value={String(f?.value || '').split(',')[1] || ''} onChange={(e) => { const nf = [...filters]; nf[idx].value = `${String(nf[idx].value || '').split(',')[0] || ''},${e.target.value}`; setFilters(nf); }} className="w-1/2 px-2 py-1.5 text-xs bg-white dark:bg-[#191c22] border border-slate-200 dark:border-[#2a2e37] rounded-lg text-slate-800 dark:text-white outline-none dark:[color-scheme:dark]" />
                                     </div>
                                   ) : (
-                                    <input type="date" value={f.value} onChange={(e) => { const nf = [...filters]; nf[idx].value = e.target.value; setFilters(nf); }} className="w-full px-2 py-1.5 text-xs bg-white dark:bg-[#191c22] border border-slate-200 dark:border-[#2a2e37] rounded-lg text-slate-800 dark:text-white outline-none dark:[color-scheme:dark]" />
+                                    <input type="date" value={f?.value || ''} onChange={(e) => { const nf = [...filters]; nf[idx].value = e.target.value; setFilters(nf); }} className="w-full px-2 py-1.5 text-xs bg-white dark:bg-[#191c22] border border-slate-200 dark:border-[#2a2e37] rounded-lg text-slate-800 dark:text-white outline-none dark:[color-scheme:dark]" />
                                   )
                                 ) : (
                                   <input 
                                     type="text" 
                                     placeholder="Valor da condição"
-                                    value={f.value}
+                                    value={f?.value || ''}
                                     onChange={(e) => { const nf = [...filters]; nf[idx].value = e.target.value; setFilters(nf); }}
                                     className="w-full px-2 py-1.5 text-xs bg-white dark:bg-[#191c22] border border-slate-200 dark:border-[#2a2e37] rounded-lg text-slate-800 dark:text-white outline-none"
                                   />
@@ -958,7 +985,7 @@ export const RuleBuilder: React.FC<RuleBuilderProps> = ({ initialSource, accentC
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-slate-100 dark:border-[#2a2e37]">
                         <label className="flex items-center gap-2 p-3 bg-slate-50 dark:bg-[#13161b] border border-slate-200 dark:border-[#343a45] rounded-xl cursor-pointer">
                           <input type="checkbox" checked={cleanAccents} onChange={(e) => setCleanAccents(e.target.checked)} className="rounded text-blue-600 w-4 h-4" />
-                          <span className="text-xs font-bold text-slate-700 dark:text-slate-300">Remover Acentos (ã -&gt; a)</span>
+                          <span className="text-xs font-bold text-slate-700 dark:text-slate-300">Remover Acentos (ã -{'>'} a)</span>
                         </label>
                         <label className="flex items-center gap-2 p-3 bg-slate-50 dark:bg-[#13161b] border border-slate-200 dark:border-[#343a45] rounded-xl cursor-pointer">
                           <input type="checkbox" checked={replaceSpaces} onChange={(e) => setReplaceSpaces(e.target.checked)} className="rounded text-blue-600 w-4 h-4" />
@@ -1052,7 +1079,7 @@ export const RuleBuilder: React.FC<RuleBuilderProps> = ({ initialSource, accentC
                         <p className="text-sm text-slate-800 dark:text-white">
                           {fileKind === 'ALL' ? 'Todos os arquivos sem distinção' : 
                            fileKind !== 'CUSTOM' ? `Arquivos classificados como: ${fileKind}` : 
-                           `Filtros avançados ativos (${filters.length} condições)`}
+                           `Filtros avançados ativos (${Array.isArray(filters) ? filters.length : 0} condições)`}
                         </p>
                       </div>
                     </div>
@@ -1082,6 +1109,95 @@ export const RuleBuilder: React.FC<RuleBuilderProps> = ({ initialSource, accentC
               </div>
             )}
 
+            {currentStep === 5 && (
+              <div className="animate-in fade-in slide-in-from-right-4 duration-300 max-w-3xl mx-auto space-y-6 pt-4">
+                <div className="flex items-center gap-2 text-purple-500 mb-2">
+                  <Sparkles size={16} />
+                  <span className="text-xs font-bold uppercase tracking-wider">Configuração de Automação</span>
+                </div>
+                <h2 className="text-xl font-bold text-slate-800 dark:text-white">Como você quer executar esta regra?</h2>
+                <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                  Escolha entre execução automática (Sentinel vai monitorar a pasta continuamente) ou manual (você executa quando precisar).
+                </p>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-6">
+                  {/* Opção: Execução Manual */}
+                  <div 
+                    onClick={() => setEnableSentinel(false)}
+                    className={`p-6 rounded-2xl border-2 cursor-pointer transition-all ${
+                      !enableSentinel 
+                        ? 'bg-blue-50 dark:bg-blue-950/20 border-blue-500 shadow-lg' 
+                        : 'bg-slate-50 dark:bg-[#13161b] border-slate-200 dark:border-[#2a2e37] hover:border-slate-300 dark:hover:border-[#383840]'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3 mb-3">
+                      <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
+                        !enableSentinel 
+                          ? 'border-blue-500 bg-blue-500' 
+                          : 'border-slate-300 dark:border-[#2a2e37]'
+                      }`}>
+                        {!enableSentinel && <div className="w-2 h-2 bg-white rounded-full" />}
+                      </div>
+                      <h3 className="text-sm font-bold text-slate-800 dark:text-white">Execução Manual</h3>
+                    </div>
+                    <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+                      Você decide quando executar a regra. Clique em "Executar" na tela de regras sempre que precisar processar os arquivos.
+                    </p>
+                    <div className="mt-4 pt-4 border-t border-slate-200 dark:border-[#2a2e37]">
+                      <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Vantagens:</p>
+                      <ul className="text-[10px] text-slate-600 dark:text-slate-400 space-y-1 mt-2">
+                        <li>✓ Controle total do usuário</li>
+                        <li>✓ Sem consumo de recursos</li>
+                      </ul>
+                    </div>
+                  </div>
+
+                  {/* Opção: Execução Automática (Sentinel) */}
+                  <div 
+                    onClick={() => setEnableSentinel(true)}
+                    className={`p-6 rounded-2xl border-2 cursor-pointer transition-all relative ${
+                      enableSentinel 
+                        ? 'bg-emerald-50 dark:bg-emerald-950/20 border-emerald-500 shadow-lg' 
+                        : 'bg-slate-50 dark:bg-[#13161b] border-slate-200 dark:border-[#2a2e37] hover:border-slate-300 dark:hover:border-[#383840]'
+                    }`}
+                  >
+                    {!isCorePlan && (
+                      <div className="absolute -top-2 -right-2 px-2 py-1 bg-amber-500 text-white text-[9px] font-bold rounded-full">
+                        {isCorePlan ? 'Bloqueado' : 'Plano Pro+'}
+                      </div>
+                    )}
+                    <div className="flex items-center gap-3 mb-3">
+                      <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
+                        enableSentinel 
+                          ? 'border-emerald-500 bg-emerald-500' 
+                          : 'border-slate-300 dark:border-[#2a2e37]'
+                      }`}>
+                        {enableSentinel && <div className="w-2 h-2 bg-white rounded-full" />}
+                      </div>
+                      <h3 className="text-sm font-bold text-slate-800 dark:text-white">Automação com Sentinel</h3>
+                    </div>
+                    <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+                      O Sentinel monitora continuamente a pasta de origem. Quando novos arquivos aparecerem, a regra é executada automaticamente.
+                    </p>
+                    <div className="mt-4 pt-4 border-t border-slate-200 dark:border-[#2a2e37]">
+                      <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Vantagens:</p>
+                      <ul className="text-[10px] text-slate-600 dark:text-slate-400 space-y-1 mt-2">
+                        <li>✓ Automação 24/7</li>
+                        <li>✓ Zero intervenção manual</li>
+                        <li>✓ Processamento em tempo real</li>
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="p-4 bg-slate-50/50 dark:bg-[#13161b]/50 rounded-2xl border border-slate-200 dark:border-[#2a2e37]">
+                  <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+                    💡 <strong>Dica:</strong> Você pode mudar essa configuração a qualquer momento na tela "Minhas Regras" usando o botão de toggle.
+                  </p>
+                </div>
+              </div>
+            )}
+
           </div>
 
           {/* RODAPÉ DO WIZARD (NAVEGAÇÃO) */}
@@ -1103,7 +1219,7 @@ export const RuleBuilder: React.FC<RuleBuilderProps> = ({ initialSource, accentC
                 </button>
               )}
               
-              {currentStep < 4 ? (
+              {currentStep < 5 ? (
                 <button 
                   onClick={nextStep}
                   className="px-6 py-2.5 rounded-xl text-white text-xs font-bold flex items-center gap-2 shadow-sm transition-transform active:scale-95"
@@ -1133,6 +1249,7 @@ export const RuleBuilder: React.FC<RuleBuilderProps> = ({ initialSource, accentC
               {currentStep === 2 && <Filter size={20} />}
               {currentStep === 3 && <ArrowRight size={20} />}
               {currentStep === 4 && <ShieldCheck size={20} />}
+              {currentStep === 5 && <Sparkles size={20} />}
             </div>
             
             <h3 className="text-sm font-bold text-slate-800 dark:text-white mb-2 leading-tight">
@@ -1141,6 +1258,7 @@ export const RuleBuilder: React.FC<RuleBuilderProps> = ({ initialSource, accentC
               {currentStep === 2 && "Escolha só o necessário"}
               {currentStep === 3 && "Mover ou copiar?"}
               {currentStep === 4 && "Confira antes de concluir"}
+              {currentStep === 5 && "Ativar automação?"}
             </h3>
             
             <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
@@ -1181,7 +1299,7 @@ export const RuleBuilder: React.FC<RuleBuilderProps> = ({ initialSource, accentC
                 <CheckCircle2 size={14} className={currentStep > 2 ? "text-emerald-500" : "text-slate-300 dark:text-slate-600"} />
                 <div>
                   <p className="text-[10px] font-bold text-slate-500">Filtro / Arquivos</p>
-                  <p className="text-xs text-slate-700 dark:text-slate-300">{fileKind === 'ALL' ? 'Todos os arquivos' : fileKind !== 'CUSTOM' && fileKind ? fileKind : filters.length > 0 && String(filters[0].value || '').trim() ? 'Regras avançadas' : '...'}</p>
+                  <p className="text-xs text-slate-700 dark:text-slate-300">{fileKind === 'ALL' ? 'Todos os arquivos' : fileKind !== 'CUSTOM' && fileKind ? fileKind : Array.isArray(filters) && filters.length > 0 && String(filters[0]?.value || '').trim() ? 'Regras avançadas' : '...'}</p>
                 </div>
               </div>
               <div className="flex gap-2 items-start">
@@ -1285,10 +1403,12 @@ export const RuleBuilder: React.FC<RuleBuilderProps> = ({ initialSource, accentC
                   <div key={r.id} className="p-4 bg-slate-50 dark:bg-[#13161b] rounded-xl border border-slate-200 dark:border-[#2a2e37] space-y-3">
                     <div className="flex items-start justify-between gap-2">
                       <div>
-                        <h4 className="text-sm font-bold text-slate-800 dark:text-white line-clamp-1" title={r.name}>{r.name}</h4>
+                        <h4 className="text-sm font-bold text-slate-800 dark:text-white line-clamp-1" title={r?.name}>{r?.name || 'Sem nome'}</h4>
                         <div className="flex items-center gap-2 mt-1">
-                          <span className="text-[9px] font-mono font-bold text-slate-500 dark:text-slate-400 bg-slate-200/50 dark:bg-[#20242c] px-1.5 py-0.5 rounded">{r.custom_code}</span>
-                          <span className="text-[9px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wider">{r.actions[0]?.action_type}</span>
+                          <span className="text-[9px] font-mono font-bold text-slate-500 dark:text-slate-400 bg-slate-200/50 dark:bg-[#20242c] px-1.5 py-0.5 rounded">{r?.custom_code || 'AUTO'}</span>
+                          <span className="text-[9px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wider">
+                            {Array.isArray(r?.actions) ? r.actions[0]?.action_type || 'INDEFINIDA' : 'INDEFINIDA'}
+                          </span>
                         </div>
                       </div>
                       <div className="flex items-center gap-1 shrink-0 bg-white dark:bg-[#191c22] p-1 rounded-lg border border-slate-200 dark:border-[#2a2e37]">
@@ -1296,45 +1416,49 @@ export const RuleBuilder: React.FC<RuleBuilderProps> = ({ initialSource, accentC
                           onClick={() => {
                             resetForm();
                             setEditingId(r.id || null);
-                            setRuleName(r.name);
-                            setCustomCode(r.custom_code);
+                            setRuleName(r.name || '');
+                            setCustomCode(r.custom_code || '');
                             setAutoCode(false);
-                            setSourceDir(r.source_directory);
-                            setFilters(r.filters);
+                            setSourceDir(r.source_directory || '');
+                            setFilters(Array.isArray(r.filters) ? r.filters : []);
                             
-                            // Reconstruindo o Wizard a partir dos dados do Backend
-                            if (r.actions[0]) {
-                              setActionType(r.actions[0].action_type);
+                            // Reconstruindo o Wizard a partir dos dados do Backend de forma segura
+                            if (Array.isArray(r.actions) && r.actions.length > 0) {
+                              const firstAction = r.actions[0];
+                              setActionType(firstAction?.action_type || 'MOVE');
                               
-                              if (r.actions[0].target_pattern.includes('{') || r.actions[0].target_pattern.includes(r.source_directory)) {
+                              const targetPattern = firstAction?.target_pattern || '';
+                              const sourceDirFallback = r.source_directory || '';
+                              
+                              if (targetPattern.includes('{') || (sourceDirFallback && targetPattern.includes(sourceDirFallback))) {
                                 setFolderMode('criar');
                                 setSubfolderPreset('custom');
-                                // Tenta extrair apenas a parte do padrão ignorando o sourceDir no inicio
-                                let pattern = r.actions[0].target_pattern;
-                                if (pattern.startsWith(r.source_directory)) {
-                                  pattern = pattern.replace(r.source_directory + '/', '');
+                                let pattern = targetPattern;
+                                if (sourceDirFallback && pattern.startsWith(sourceDirFallback)) {
+                                  pattern = pattern.replace(sourceDirFallback + '/', '');
                                 }
                                 setCreatePattern(pattern);
                               } else {
                                 setFolderMode('existente');
                                 setSubfolderPreset('fixed');
-                                setTargetDir(r.actions[0].target_pattern);
+                                setTargetDir(targetPattern);
                               }
                               
-                              setCleanAccents(r.actions[0].clean_accents || false);
-                              setReplaceSpaces(r.actions[0].replace_spaces || false);
-                              setCaseFormat(r.actions[0].case_format || 'NONE');
-                              setRegexPattern(r.actions[0].regex_pattern || '');
-                              setRegexReplacement(r.actions[0].regex_replacement || '');
+                              setCleanAccents(firstAction?.clean_accents || false);
+                              setReplaceSpaces(firstAction?.replace_spaces || false);
+                              setCaseFormat(firstAction?.case_format || 'NONE');
+                              setRegexPattern(firstAction?.regex_pattern || '');
+                              setRegexReplacement(firstAction?.regex_replacement || '');
                               
-                              if (r.actions[0].regex_pattern) setRegexPreset('CUSTOM');
+                              if (firstAction?.regex_pattern) setRegexPreset('CUSTOM');
                               else setRegexPreset('NONE');
                             }
                             
-                            // Define o FileKind baseado nos filtros
-                            if (r.filters.length === 1 && r.filters[0].field_name === 'Tipo de Documento (Categoria)') {
-                              setFileKind(r.filters[0].value);
-                            } else if (r.filters.length === 1 && r.filters[0].field_name === 'Extensão' && r.filters[0].value === '') {
+                            // Define o FileKind baseado nos filtros de forma segura
+                            const currentFilters = Array.isArray(r.filters) ? r.filters : [];
+                            if (currentFilters.length === 1 && currentFilters[0]?.field_name === 'Tipo de Documento (Categoria)') {
+                              setFileKind(currentFilters[0]?.value || '');
+                            } else if (currentFilters.length === 1 && currentFilters[0]?.field_name === 'Extensão' && currentFilters[0]?.value === '') {
                               setFileKind('ALL');
                             } else {
                               setFileKind('CUSTOM');
@@ -1343,7 +1467,7 @@ export const RuleBuilder: React.FC<RuleBuilderProps> = ({ initialSource, accentC
 
                             setIsRulesModalOpen(false);
                             setCurrentStep(0);
-                            setFurthestStep(4); // Permite navegar livremente
+                            setFurthestStep(4); 
                           }}
                           className="w-7 h-7 flex items-center justify-center text-slate-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-md transition-colors"
                           title="Editar regra"
@@ -1361,24 +1485,35 @@ export const RuleBuilder: React.FC<RuleBuilderProps> = ({ initialSource, accentC
                     </div>
 
                     <div className="flex items-center justify-between pt-3 border-t border-slate-200 dark:border-[#2a2e37]">
-                      <span className="text-[10px] text-slate-500 flex items-center gap-1.5">
-                        <Folder size={12} className="text-amber-500" />
-                        <span className="truncate max-w-[150px]">{r.source_directory}</span>
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] text-slate-500 flex items-center gap-1.5">
+                          <Folder size={12} className="text-amber-500" />
+                          <span className="truncate max-w-[120px]">{r?.source_directory || 'Nenhuma'}</span>
+                        </span>
+                      </div>
 
                       <button
                         onClick={() => handleToggleAutoPilot(r)}
-                        className={`px-3 py-1.5 rounded-full text-[10px] font-bold flex items-center gap-1.5 transition-all shadow-xs shrink-0 ${
+                        className={`px-4 py-1.5 rounded-full text-[10px] font-bold flex items-center gap-1.5 transition-all shadow-xs shrink-0 ${
                           isCorePlan 
                             ? 'bg-slate-200/40 dark:bg-[#20242c] text-slate-400 cursor-not-allowed border border-slate-200 dark:border-[#343a45]' 
-                            : r.is_sentinel_active
-                              ? 'bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400 border border-emerald-300 dark:border-emerald-800'
-                              : 'bg-white dark:bg-[#191c22] text-slate-500 border border-slate-300 dark:border-[#343a45] hover:border-slate-400'
+                            : r?.is_sentinel_active
+                              ? 'bg-emerald-100/70 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700 hover:bg-emerald-100 dark:hover:bg-emerald-950/70'
+                              : 'bg-slate-100 dark:bg-[#20242c] text-slate-600 dark:text-slate-400 border border-slate-300 dark:border-[#383840] hover:bg-slate-150 dark:hover:bg-[#27272a]'
                         }`}
-                        title={isCorePlan ? "Disponível apenas no plano Foldex Pro" : r.is_sentinel_active ? "Desligar Sentinel" : "Ligar Sentinel"}
+                        title={isCorePlan ? "Disponível apenas no plano Foldex Pro" : r?.is_sentinel_active ? "Clique para desligar Sentinel (automação)" : "Clique para ligar Sentinel (automação)"}
                       >
-                        {isCorePlan ? <Lock size={12} /> : <Bot size={12} />}
-                        {r.is_sentinel_active ? 'ON' : 'OFF'}
+                        {isCorePlan ? (
+                          <>
+                            <Lock size={12} />
+                            <span>PRO</span>
+                          </>
+                        ) : (
+                          <>
+                            <div className={`w-2 h-2 rounded-full ${r?.is_sentinel_active ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'}`} />
+                            <span>{r?.is_sentinel_active ? 'Automático' : 'Manual'}</span>
+                          </>
+                        )}
                       </button>
                     </div>
                   </div>

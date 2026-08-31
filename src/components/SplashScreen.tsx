@@ -18,6 +18,7 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({ onFinish, accentColo
   const [fadeOut, setFadeOut] = useState(false);
 
   useEffect(() => {
+    console.log('📢 [SplashScreen] Mounted');
     // Array de passos dinâmico com o tradutor embutido
     const steps = [
       { p: 35, msg: t('splash.db') },
@@ -34,12 +35,19 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({ onFinish, accentColo
         currentStep++;
       } else {
         clearInterval(interval);
+        console.log('📢 [SplashScreen] Fading out');
         setTimeout(() => setFadeOut(true), 300);
-        setTimeout(onFinish, 700);
+        setTimeout(() => {
+          console.log('📢 [SplashScreen] Calling onFinish()');
+          onFinish();
+        }, 700);
       }
     }, 280);
 
-    return () => clearInterval(interval);
+    return () => {
+      console.log('📢 [SplashScreen] Unmounted');
+      clearInterval(interval);
+    };
   }, [onFinish, t]); // 't' adicionado como dependência para segurança do React
 
   return (
