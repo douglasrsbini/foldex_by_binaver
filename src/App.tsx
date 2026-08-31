@@ -21,7 +21,6 @@ import {
   Sliders, Cpu, Bot, X, Sparkles, Send, Loader2, User, BarChart3
 } from 'lucide-react';
 
-// ⚡ IMPORTAÇÃO BLINDADA DO ÍCONE
 import appIcon from './assets/app-icon.png';
 
 const ENABLE_AI_FEATURES = false; 
@@ -38,7 +37,6 @@ interface ChatMessage {
   text: string;
 }
 
-// ⚡ TRAVA DE SEGURANÇA 1: Protege contra licença nula e aplica o nome "Basic"
 const getLicenseTag = (lic: LicenseInfo | null) => {
   if (!lic || !lic.is_activated || !lic.plan_name) return 'Community';
   const p = String(lic.plan_name).toLowerCase();
@@ -90,7 +88,13 @@ const renderFormattedText = (text: string) => {
 };
 
 export const App: React.FC = () => {
+  // ⚡ AQUI ESTÁ A SOLUÇÃO: Máquina de estados isola o carregamento e evita o Crash
   const [currentView, setCurrentView] = useState<'SPLASH' | 'SETUP' | 'APP'>('SPLASH');
+  
+  const [isSetupDone, setIsSetupDone] = useState<boolean>(() => {
+    return localStorage.getItem('foldex_setup_done') === 'true';
+  });
+
   const [activeTab, setActiveTab] = useState('builder');
   const [license, setLicense] = useState<LicenseInfo | null>(null);
   
@@ -100,9 +104,6 @@ export const App: React.FC = () => {
   const [hintCode, setHintCode] = useState<string | null>(null);
   const [loadingActivation, setLoadingActivation] = useState(false);
   const [copiedId, setCopiedId] = useState(false);
-
-  // ⚡ SOLUÇÃO DO ERRO DE BUILD: Variável agora declarada globalmente no componente
-  const isSetupDone = localStorage.getItem('foldex_setup_done') === 'true';
 
   const [isTourOpen, setIsTourOpen] = useState<boolean>(() => {
     return localStorage.getItem('onboarding_tour_completed') !== 'true';
@@ -140,7 +141,6 @@ export const App: React.FC = () => {
     }
   ]);
 
-  // ⚡ TRAVA DE SEGURANÇA 2: Impede crash ao abrir as Dashboards se o plano não carregou a tempo
   const isEnterprisePlan = license?.is_activated && license?.plan_name ? 
     (String(license.plan_name).toLowerCase().includes('enterprise') || String(license.plan_name).toLowerCase().includes('master')) : false;
 
@@ -309,6 +309,7 @@ export const App: React.FC = () => {
     setActiveTab('builder');
   };
 
+  // ⚡ Transição segura saindo do Splash
   const handleSplashFinish = () => {
     setCurrentView(isSetupDone ? 'APP' : 'SETUP');
   };
@@ -325,6 +326,7 @@ export const App: React.FC = () => {
     localStorage.setItem('app_theme', prefs.theme);
     localStorage.setItem('accent_color', prefs.accentColor);
     localStorage.setItem('foldex_setup_done', 'true');
+    setIsSetupDone(true);
     
     if (prefs.reloadLicense) {
       await loadLicense();
