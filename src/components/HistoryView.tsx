@@ -22,6 +22,7 @@ import {
   Square
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next'; // ⚡ Óculos Mágicos
+import { EmptyState } from './EmptyState';
 
 type HistoryDateFilter = 'ALL' | 'TODAY' | '7D' | '30D' | 'EXACT' | 'RANGE';
 
@@ -49,10 +50,11 @@ export const HistoryView: React.FC = () => {
     setLoading(true);
     try {
       const res = await invoke<AuditLog[]>('get_audit_logs');
-      setLogs(res);
+      setLogs(res ?? []);
       setSelectedLogIds([]); 
     } catch (e) {
       console.error(e);
+      setLogs([]);
     } finally {
       setLoading(false);
     }
@@ -142,7 +144,7 @@ export const HistoryView: React.FC = () => {
     if (logs.length === 0) return;
     const headers = t('history.csv_headers');
     const rows = logs.map(l => 
-      `"${l.id}";"${l.batch_id}";"${l.action_type}";"${l.original_path}";"${l.destination_path || ''}";"${l.file_size_bytes}";"${l.file_hash_sha256 || ''}";"${l.current_log_hash || ''}";"${l.windows_user || ''}";"${l.status}";"${l.executed_at}"`
+      `"${l.id}";"${l.batch_id ?? ''}";"${l.action_type ?? ''}";"${l.original_path ?? ''}";"${l.destination_path || ''}";"${l.file_size_bytes ?? 0}";"${l.file_hash_sha256 || ''}";"${l.current_log_hash || ''}";"${l.windows_user || ''}";"${l.status ?? ''}";"${l.executed_at ?? ''}"`
     ).join('\n');
 
     const blob = new Blob(['\uFEFF' + headers + rows], { type: 'text/csv;charset=utf-8;' });
@@ -172,16 +174,17 @@ export const HistoryView: React.FC = () => {
     }
   };
 
-  const uniqueBatches = Array.from(new Set(logs.map(l => l.batch_id)));
+  const uniqueBatches = Array.from(new Set(logs.map(l => l.batch_id).filter((b): b is string => Boolean(b))));
 
   const filteredLogs = useMemo(() => {
     const now = new Date();
 
     return logs.filter(l => {
-      const matchesSearch = l.original_path.toLowerCase().includes(search.toLowerCase()) ||
-                            (l.destination_path && l.destination_path.toLowerCase().includes(search.toLowerCase())) ||
-                            (l.file_hash_sha256 && l.file_hash_sha256.toLowerCase().includes(search.toLowerCase())) ||
-                            l.batch_id.toLowerCase().includes(search.toLowerCase());
+      const searchLower = search.toLowerCase();
+      const matchesSearch = (l.original_path ?? '').toLowerCase().includes(searchLower) ||
+                            (l.destination_path && l.destination_path.toLowerCase().includes(searchLower)) ||
+                            (l.file_hash_sha256 && l.file_hash_sha256.toLowerCase().includes(searchLower)) ||
+                            (l.batch_id ?? '').toLowerCase().includes(searchLower);
       if (!matchesSearch) return false;
 
       const matchesBatch = batchFilter === 'ALL' || l.batch_id === batchFilter;
@@ -230,7 +233,7 @@ export const HistoryView: React.FC = () => {
     <div className="flex flex-col h-full gap-3 select-none overflow-hidden relative">
       
       {/* Barra de Filtros & Ações da Auditoria */}
-      <div className="flex flex-wrap items-center justify-between gap-2.5 p-3 bg-white dark:bg-[#1e1e24] rounded-2xl border border-slate-200 dark:border-[#2e2e34] shadow-sm shrink-0">
+      <div className="flex flex-wrap items-center justify-between gap-2.5 p-3 liquid-glass-surface rounded-2xl shrink-0">
         <div className="flex flex-wrap items-center gap-2 flex-1 min-w-[280px]">
           <div className="relative flex-1 min-w-[140px] max-w-xs">
             <Search size={13} className="absolute left-3 top-2.5 text-slate-400" />
@@ -398,7 +401,7 @@ export const HistoryView: React.FC = () => {
       )}
 
       {/* Lista de Registros Forenses com Checkboxes */}
-      <div className="flex-1 bg-white dark:bg-[#1e1e24] rounded-2xl border border-slate-200 dark:border-[#2e2e34] p-3 overflow-y-auto space-y-2 shadow-sm min-h-0">
+      <div className="flex-1 bg-white/65 dark:bg-slate-950/55 backdrop-blur-2xl rounded-2xl border border-white/60 dark:border-white/10 p-3 overflow-y-auto space-y-2 shadow-sm min-h-0">
         
         {filteredLogs.length > 0 && (
           <div className="flex items-center gap-2 px-2 pb-2 border-b border-slate-100 dark:border-[#2e2e34] text-[11px] font-bold text-slate-500">
@@ -415,7 +418,12 @@ export const HistoryView: React.FC = () => {
         {loading ? (
           <div className="h-full flex items-center justify-center text-xs text-slate-400 font-medium">{t('history.loading_logs')}</div>
         ) : filteredLogs.length === 0 ? (
-          <div className="h-full flex items-center justify-center text-xs text-slate-400">{t('history.no_logs')}</div>
+          <EmptyState
+            type="NO_HISTORY"
+            accentColor="#3b82f6"
+            title={t('history.no_logs')}
+            description={t('history.no_logs')}
+          />
         ) : (
           filteredLogs.map((log) => {
             const isChecked = log.id !== null && log.id !== undefined && selectedLogIds.includes(log.id);
@@ -470,7 +478,7 @@ export const HistoryView: React.FC = () => {
                         : 'bg-red-100 dark:bg-red-950/50 text-red-700'
                     }`}>
                       {log.status === 'SUCESSO' || log.status === 'SUCCESS' ? <CheckCircle2 size={10} /> : <XCircle size={10} />}
-                      {translateStatus(log.status)} • {translateAction(log.action_type)}
+                      {translateStatus(log.status ?? '')} • {translateAction(log.action_type ?? '')}
                     </span>
                   </div>
                 </div>
@@ -529,11 +537,12 @@ export const HistoryView: React.FC = () => {
                   </div>
 
                   <span className="font-bold">
-                    {log.file_size_bytes < 1024 
-                      ? `${log.file_size_bytes} B` 
-                      : log.file_size_bytes < 1024 * 1024 
-                      ? `${(log.file_size_bytes / 1024).toFixed(1)} KB` 
-                      : `${(log.file_size_bytes / (1024 * 1024)).toFixed(2)} MB`}
+                    {(() => {
+                      const bytes = log.file_size_bytes ?? 0;
+                      if (bytes < 1024) return `${bytes} B`;
+                      if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+                      return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+                    })()}
                   </span>
                 </div>
 

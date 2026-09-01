@@ -488,6 +488,17 @@ fn resolve_destination_path(file: &Path, action: &RuleAction) -> PathBuf {
     dest_path
 }
 
+/// Impede que uma sugestão remota de IA crie um caminho inválido ou escape do
+/// diretório de destino no Windows.
+fn sanitize_ai_filename(filename: &str) -> String {
+    filename
+        .chars()
+        .filter(|character| !matches!(character, '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*'))
+        .collect::<String>()
+        .trim_matches(|character: char| character == '.' || character.is_whitespace())
+        .to_string()
+}
+
 fn parse_custom_date(dt_str: &str) -> Option<NaiveDateTime> {
     let dt_str = dt_str.trim();
     for fmt in ["%d/%m/%Y %H:%M", "%d/%m/%Y", "%Y-%m-%d %H:%M", "%Y-%m-%d"] {
@@ -518,6 +529,7 @@ pub async fn run_simulation(rule_id: i64) -> Result<Vec<DryRunResult>, String> {
         case_format: Some("NONE".into()),
         regex_pattern: None,
         regex_replacement: None,
+        convert_format: None,
     };
     
     let action_obj = rule.actions.first().unwrap_or(&dummy_action);
@@ -543,6 +555,11 @@ pub async fn run_simulation(rule_id: i64) -> Result<Vec<DryRunResult>, String> {
                         _ => ext.contains(&target),
                     },
                     "Tipo de Documento (Categoria)" => tipo_doc.to_lowercase() == target,
+                    "Conteúdo do Documento (OCR)" => {
+                        // 🔎 Filtro por conteúdo textual (OCR). Operação custosa por natureza,
+                        // por isso só é executada quando este filtro específico está presente.
+                        crate::services::ocr_engine::file_content_matches_keyword(p, &target)
+                    },
                     "Nome do Arquivo" => match op {
                         "É IGUAL A" => filename_full.to_lowercase() == target,
                         "NÃO É (DIFERENTE DE)" => filename_full.to_lowercase() != target,
@@ -606,7 +623,7 @@ pub async fn run_simulation(rule_id: i64) -> Result<Vec<DryRunResult>, String> {
 }
 
 #[tauri::command]
-pub async fn execute_rule(rule_id: i64) -> Result<String, String> {
+pub async fn execute_rule(rule_id: i64, api_key: Option<String>) -> Result<String, String> {
     let rules = get_rules()?;
     let rule = rules.into_iter().find(|r| r.id == Some(rule_id)).ok_or("Regra não encontrada")?;
     let conflict_policy = rule.conflict_policy.unwrap_or_else(|| "AUTONUMBER".into());
@@ -633,6 +650,12 @@ pub async fn execute_rule(rule_id: i64) -> Result<String, String> {
 
     let win_user = format!("{}\\{}", std::env::var("USERDOMAIN").unwrap_or_default(), std::env::var("USERNAME").unwrap_or_default());
 
+    // 🔄 Formato alvo de conversão (se a ação da regra for CONVERT_FORMAT).
+    let convert_target_format = rule
+        .actions
+        .first()
+        .and_then(|a| a.convert_format.clone());
+
     let mut prev_hash: String = conn.query_row(
         "SELECT current_log_hash FROM audit_logs ORDER BY id DESC LIMIT 1",
         [],
@@ -648,7 +671,7 @@ pub async fn execute_rule(rule_id: i64) -> Result<String, String> {
         let size_bytes = src_file.metadata().map(|m| m.len()).unwrap_or(0) as i64;
         let file_sha256 = compute_file_sha256(&src_file);
 
-        let final_dest = if raw_dest.exists() {
+        let mut final_dest = if raw_dest.exists() {
             match conflict_policy.as_str() {
                 "SKIP" => continue,
                 "OVERWRITE" => raw_dest.clone(),
@@ -686,6 +709,69 @@ pub async fn execute_rule(rule_id: i64) -> Result<String, String> {
                 zip_file_path.to_string_lossy().to_string(),
                 zip_password.clone(),
             )?;
+        } else if item.action == "CONVERT_FORMAT" {
+            // 🔄 Converte o arquivo (Word/Excel/Imagem) para PDF via LibreOffice headless
+            // e grava o resultado na pasta de destino final da regra.
+            if let Some(target_format) = convert_target_format.as_deref() {
+                if target_format.eq_ignore_ascii_case("pdf") {
+                    let out_dir = final_dest.parent().unwrap_or(Path::new(".")).to_path_buf();
+                    let conversion = crate::services::file_converter::convert_file_to_pdf(&src_file, &out_dir);
+                    if !conversion.success {
+                        return Err(conversion.message);
+                    }
+                } else {
+                    return Err(format!("Formato de conversão '{}' ainda não suportado.", target_format));
+                }
+            } else {
+                return Err("Nenhum formato de destino foi definido para a ação de conversão.".into());
+            }
+        } else if item.action == "AI_RENAME" {
+            let api_key = api_key
+                .as_deref()
+                .filter(|key| !key.trim().is_empty())
+                .ok_or("Configure uma chave da API Gemini antes de executar uma regra de Tratamento por IA.")?;
+
+            let source_for_ocr = src_file.clone();
+            let ocr_result = tokio::task::spawn_blocking(move || {
+                crate::services::ocr_engine::extract_text_from_file(&source_for_ocr)
+            })
+            .await
+            .map_err(|e| format!("Erro interno ao processar OCR: {}", e))?;
+
+            let extracted_text = ocr_result
+                .extracted_text
+                .ok_or_else(|| ocr_result.message.unwrap_or_else(|| "Não foi possível extrair o conteúdo do documento.".to_string()))?;
+
+            let suggestion = crate::services::ai_document_analyzer::suggest_rename_from_content(
+                &src_file.to_string_lossy(),
+                &extracted_text,
+                api_key,
+            )
+            .await?;
+
+            let suggested_stem = suggestion
+                .suggested_filename
+                .map(|name| sanitize_ai_filename(&name))
+                .filter(|name| !name.is_empty())
+                .ok_or("A IA não retornou um nome de arquivo válido.")?;
+            let extension = src_file.extension().and_then(|ext| ext.to_str()).unwrap_or_default();
+            let suggested_name = if extension.is_empty() {
+                suggested_stem
+            } else {
+                format!("{}.{}", suggested_stem, extension)
+            };
+            let target_directory = final_dest.parent().unwrap_or_else(|| Path::new("."));
+            final_dest = target_directory.join(suggested_name);
+
+            if final_dest.exists() {
+                final_dest = match conflict_policy.as_str() {
+                    "SKIP" => continue,
+                    "OVERWRITE" => final_dest,
+                    _ => resolve_unique_path(final_dest),
+                };
+            }
+
+            fs::rename(&src_file, &final_dest).map_err(|e| e.to_string())?;
         } else {
             fs::rename(&src_file, &final_dest).map_err(|e| e.to_string())?;
         }

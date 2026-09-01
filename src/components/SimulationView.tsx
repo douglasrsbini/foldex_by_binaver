@@ -35,12 +35,14 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ accentColor }) =
   const loadRules = async () => {
     try {
       const res = await invoke<Rule[]>('get_rules');
-      setRules(res);
-      if (res.length > 0 && res[0].id) {
-        setSelectedRuleIds([res[0].id]);
+      const safeRes = res ?? [];
+      setRules(safeRes);
+      if (safeRes.length > 0 && safeRes[0].id) {
+        setSelectedRuleIds([safeRes[0].id]);
       }
     } catch (e) {
       console.error(e);
+      setRules([]);
     }
   };
 
@@ -76,7 +78,7 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ accentColor }) =
         allResults.push({
           ruleId: rId,
           ruleName: rule ? `ID ${rule.custom_code} - ${rule.name}` : `Rule ${rId}`,
-          results: res,
+          results: res ?? [],
         });
       }
       setSimResults(allResults);
@@ -94,8 +96,9 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ accentColor }) =
     setExecuting(true);
     try {
       let totalExecuted = 0;
+      const apiKey = localStorage.getItem('foldex_gemini_key')?.trim() || undefined;
       for (const rId of selectedRuleIds) {
-        const batch = await invoke<string>('execute_rule', { ruleId: rId });
+        const batch = await invoke<string>('execute_rule', { ruleId: rId, apiKey });
         if (batch.startsWith('Lote')) totalExecuted++;
       }
       alert(t('simulation.alert_exec_success'));
@@ -129,7 +132,7 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ accentColor }) =
     <div className="flex flex-col h-full gap-3 select-none overflow-hidden" onClick={() => setDropdownOpen(false)}>
       
       {/* Barra de Controle de Simulação */}
-      <div className="p-3 bg-white dark:bg-[#1e1e24] rounded-2xl border border-slate-200 dark:border-[#2e2e34] shadow-sm flex flex-wrap items-center justify-between gap-3 shrink-0">
+      <div className="p-3 liquid-glass-surface rounded-2xl flex flex-wrap items-center justify-between gap-3 shrink-0">
         
         {/* Seletor Múltiplo Customizado */}
         <div className="relative flex-1 min-w-[260px] max-w-md" onClick={(e) => e.stopPropagation()}>
@@ -215,7 +218,7 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ accentColor }) =
       </div>
 
       {/* Área de Resultados da Simulação */}
-      <div className="flex-1 bg-white dark:bg-[#1e1e24] rounded-2xl border border-slate-200 dark:border-[#2e2e34] p-3 overflow-y-auto space-y-4 shadow-sm min-h-0">
+      <div className="flex-1 liquid-glass-surface rounded-2xl p-3 overflow-y-auto space-y-4 shadow-sm min-h-0">
         {simResults.length === 0 ? (
           <div className="h-full flex flex-col items-center justify-center text-xs text-slate-400 gap-2">
             <SlidersHorizontal size={24} className="opacity-40" />

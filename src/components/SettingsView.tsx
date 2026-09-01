@@ -11,6 +11,7 @@ import {
   Cpu, Calculator, Lock, EyeOff, Eye, Sparkles, Server, Cloud
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next'; // ⚡ Óculos Mágicos ativados!
+import { LicenseTestPanel } from './LicenseTestPanel';
 
 const ENABLE_AI_FEATURES = false; 
 
@@ -21,6 +22,10 @@ interface SettingsViewProps {
   setAccentColor: (color: string) => void;
   hourlyRate: number;
   setHourlyRate: (rate: number) => void;
+  glassIntensity: number;
+  setGlassIntensity: (value: number) => void;
+  cornerRadius: number;
+  setCornerRadius: (value: number) => void;
 }
 
 export const SettingsView: React.FC<SettingsViewProps> = ({
@@ -30,6 +35,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   setAccentColor,
   hourlyRate,
   setHourlyRate,
+  glassIntensity,
+  setGlassIntensity,
+  cornerRadius,
+  setCornerRadius,
 }) => {
   const { t } = useTranslation(); // ⚡ Instância do tradutor
   
@@ -130,7 +139,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     <div className="flex flex-col h-full gap-4 overflow-y-auto pr-1 select-none w-full custom-scrollbar">
       
       {/* Cabeçalho */}
-      <div className="p-4 bg-white dark:bg-[#1e1e24] rounded-2xl border border-slate-200 dark:border-[#2e2e34] shadow-sm flex items-center justify-between shrink-0">
+      <div className="p-4 liquid-glass-surface rounded-2xl flex items-center justify-between shrink-0">
         <div className="flex items-center gap-2.5">
           <Settings2 size={18} style={{ color: accentColor }} />
           <div>
@@ -151,12 +160,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         </button>
       </div>
 
+      <div className="liquid-glass p-4">
+        <LicenseTestPanel accentColor={accentColor} />
+      </div>
+
       {/* Grid com Painéis */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pb-4">
         
         {/* 🤖 PAINEL DE INTELIGÊNCIA ARTIFICIAL */}
         {ENABLE_AI_FEATURES && (
-          <div className="p-5 bg-white dark:bg-[#1e1e24] rounded-2xl border border-slate-200 dark:border-[#2e2e34] shadow-sm space-y-4 md:col-span-2 lg:col-span-1">
+          <div className="p-5 liquid-glass-surface rounded-2xl space-y-4 md:col-span-2 lg:col-span-1">
             <div className="flex items-center gap-2 border-b border-slate-100 dark:border-[#2e2e34] pb-3">
               <Sparkles size={16} className="text-indigo-500" />
               <h3 className="text-xs font-bold text-slate-800 dark:text-white uppercase tracking-wider">
@@ -218,7 +231,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         )}
 
         {/* 🔔 Painel 1: Central de Notificações */}
-        <div className="p-5 bg-white dark:bg-[#1e1e24] rounded-2xl border border-slate-200 dark:border-[#2e2e34] shadow-sm space-y-4">
+        <div className="p-5 liquid-glass-surface rounded-2xl space-y-4">
           <div className="flex items-center justify-between border-b border-slate-100 dark:border-[#2e2e34] pb-3">
             <div className="flex items-center gap-2">
               <Bell size={16} style={{ color: accentColor }} />
@@ -244,7 +257,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             </div>
             <label className="relative inline-flex items-center cursor-pointer">
               <input type="checkbox" checked={masterNotif} onChange={(e) => setMasterNotif(e.target.checked)} className="sr-only peer" />
-              <div className="w-10 h-5 bg-slate-300 peer-focus:outline-none rounded-full peer dark:bg-[#333338] peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
+              <div className="w-10 h-5 bg-slate-300 peer-focus:outline-none rounded-full peer dark:bg-[#333338] peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all" style={{ backgroundColor: masterNotif ? accentColor : undefined }}></div>
             </label>
           </div>
 
@@ -252,19 +265,19 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">{t('settings.notif.events_label')}</span>
             <label className="flex items-center justify-between p-2.5 rounded-xl hover:bg-slate-50 dark:hover:bg-[#18181b] cursor-pointer">
               <div className="flex items-center gap-2"><Bot size={14} className="text-green-600" /><span className="text-slate-700 dark:text-slate-300 font-medium">{t('settings.notif.event_auto')}</span></div>
-              <input type="checkbox" checked={notifAutoExec} onChange={(e) => setNotifAutoExec(e.target.checked)} className="rounded text-blue-600 h-4 w-4" />
+              <input type="checkbox" checked={notifAutoExec} onChange={(e) => setNotifAutoExec(e.target.checked)} className="rounded h-4 w-4" style={{ accentColor }} />
             </label>
             <label className="flex items-center justify-between p-2.5 rounded-xl hover:bg-slate-50 dark:hover:bg-[#18181b] cursor-pointer">
               <div className="flex items-center gap-2"><FolderArchive size={14} className="text-blue-500" /><span className="text-slate-700 dark:text-slate-300 font-medium">{t('settings.notif.event_backup')}</span></div>
-              <input type="checkbox" checked={notifBackupZip} onChange={(e) => setNotifBackupZip(e.target.checked)} className="rounded text-blue-600 h-4 w-4" />
+              <input type="checkbox" checked={notifBackupZip} onChange={(e) => setNotifBackupZip(e.target.checked)} className="rounded h-4 w-4" style={{ accentColor }} />
             </label>
             <label className="flex items-center justify-between p-2.5 rounded-xl hover:bg-slate-50 dark:hover:bg-[#18181b] cursor-pointer">
               <div className="flex items-center gap-2"><RotateCcw size={14} className="text-red-500" /><span className="text-slate-700 dark:text-slate-300 font-medium">{t('settings.notif.event_rollback')}</span></div>
-              <input type="checkbox" checked={notifRollback} onChange={(e) => setNotifRollback(e.target.checked)} className="rounded text-blue-600 h-4 w-4" />
+              <input type="checkbox" checked={notifRollback} onChange={(e) => setNotifRollback(e.target.checked)} className="rounded h-4 w-4" style={{ accentColor }} />
             </label>
             <label className="flex items-center justify-between p-2.5 rounded-xl hover:bg-slate-50 dark:hover:bg-[#18181b] cursor-pointer">
               <div className="flex items-center gap-2"><ShieldAlert size={14} className="text-purple-500" /><span className="text-slate-700 dark:text-slate-300 font-medium">{t('settings.notif.event_integrity')}</span></div>
-              <input type="checkbox" checked={notifIntegrity} onChange={(e) => setNotifIntegrity(e.target.checked)} className="rounded text-blue-600 h-4 w-4" />
+              <input type="checkbox" checked={notifIntegrity} onChange={(e) => setNotifIntegrity(e.target.checked)} className="rounded h-4 w-4" style={{ accentColor }} />
             </label>
           </div>
         </div>
@@ -281,8 +294,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           <div className="space-y-2">
             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">{t('settings.theme.visual_label')}</span>
             <div className="grid grid-cols-2 gap-2">
-              <button onClick={() => setTheme('Light')} className={`py-2 rounded-xl text-xs font-bold border flex items-center justify-center gap-2 transition-colors ${theme === 'Light' ? 'bg-blue-50 text-blue-600 border-blue-300 dark:bg-blue-950/40' : 'bg-slate-50 dark:bg-[#18181b] text-slate-600 dark:text-slate-400 border-slate-200 dark:border-[#2e2e34]'}`}><Sun size={14} /><span>{t('settings.theme.light')}</span></button>
-              <button onClick={() => setTheme('Dark')} className={`py-2 rounded-xl text-xs font-bold border flex items-center justify-center gap-2 transition-colors ${theme === 'Dark' ? 'bg-blue-950/60 text-blue-400 border-blue-800' : 'bg-slate-50 dark:bg-[#18181b] text-slate-600 dark:text-slate-400 border-slate-200 dark:border-[#2e2e34]'}`}><Moon size={14} /><span>{t('settings.theme.dark')}</span></button>
+              <button onClick={() => setTheme('Light')} className={`py-2 rounded-xl text-xs font-bold border flex items-center justify-center gap-2 transition-colors ${theme === 'Light' ? 'border-transparent' : 'bg-slate-50 dark:bg-[#18181b] text-slate-600 dark:text-slate-400 border-slate-200 dark:border-[#2e2e34]'}`} style={theme === 'Light' ? { backgroundColor: `${accentColor}18`, color: accentColor, boxShadow: `inset 0 0 0 1px ${accentColor}55` } : undefined}><Sun size={14} /><span>{t('settings.theme.light')}</span></button>
+              <button onClick={() => setTheme('Dark')} className={`py-2 rounded-xl text-xs font-bold border flex items-center justify-center gap-2 transition-colors ${theme === 'Dark' ? 'border-transparent' : 'bg-slate-50 dark:bg-[#18181b] text-slate-600 dark:text-slate-400 border-slate-200 dark:border-[#2e2e34]'}`} style={theme === 'Dark' ? { backgroundColor: `${accentColor}25`, color: accentColor, boxShadow: `inset 0 0 0 1px ${accentColor}66` } : undefined}><Moon size={14} /><span>{t('settings.theme.dark')}</span></button>
             </div>
           </div>
 
@@ -290,7 +303,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">{t('settings.theme.color_label')}</span>
             <div className="flex flex-wrap items-center gap-2">
               {presetColors.map(c => (
-                <button key={c.value} onClick={() => setAccentColor(c.value)} className={`w-7 h-7 rounded-full flex items-center justify-center transition-transform ${accentColor === c.value ? 'scale-110 ring-2 ring-offset-2 ring-blue-500' : 'hover:scale-105'}`} style={{ backgroundColor: c.value }} title={c.name}>
+                <button key={c.value} onClick={() => setAccentColor(c.value)} className={`w-7 h-7 rounded-full flex items-center justify-center transition-transform ring-offset-2 dark:ring-offset-[#1e1e24] ${accentColor === c.value ? 'scale-110 ring-2' : 'hover:scale-105'}`} style={{ backgroundColor: c.value, ...(accentColor === c.value ? { ['--tw-ring-color' as any]: c.value } : {}) }} title={c.name}>
                   {accentColor === c.value && <Check size={13} className="text-white" />}
                 </button>
               ))}
@@ -302,8 +315,51 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           </div>
         </div>
 
+        <div className="p-5 liquid-glass-surface rounded-2xl space-y-4">
+          <div className="flex items-center gap-2 border-b border-slate-200/60 dark:border-white/10 pb-3">
+            <Sparkles size={16} style={{ color: accentColor }} />
+            <h3 className="text-xs font-bold text-slate-800 dark:text-white uppercase tracking-wider">Personalização do vidro</h3>
+          </div>
+          <label className="space-y-2 block">
+            <div className="flex items-center justify-between text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+              <span>Intensidade do efeito</span><span>{glassIntensity}px</span>
+            </div>
+            <input type="range" min="20" max="50" step="1" value={glassIntensity} onChange={(e) => setGlassIntensity(Number(e.target.value))} className="w-full" style={{ accentColor }} />
+            <span className="text-[10px] text-slate-400 block">Controla o desfoque das superfícies translúcidas.</span>
+          </label>
+          <label className="space-y-2 block">
+            <div className="flex items-center justify-between text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+              <span>Raio dos cantos</span><span>{cornerRadius}px</span>
+            </div>
+            <input type="range" min="12" max="30" step="1" value={cornerRadius} onChange={(e) => setCornerRadius(Number(e.target.value))} className="w-full" style={{ accentColor }} />
+            <span className="text-[10px] text-slate-400 block">Define o acabamento arredondado dos painéis principais.</span>
+          </label>
+
+          {/* 🔮 Preview ao vivo do "Liquid Glass" com os valores atuais */}
+          <div className="pt-2">
+            <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block mb-2">Pré-visualização em tempo real</span>
+            <div className="relative h-24 rounded-2xl overflow-hidden bg-gradient-to-br from-indigo-500/30 via-purple-500/20 to-blue-500/30">
+              <div
+                className="absolute inset-3 flex items-center justify-center gap-2 border text-[11px] font-semibold"
+                style={{
+                  borderRadius: `${cornerRadius}px`,
+                  backdropFilter: `blur(${glassIntensity}px) saturate(150%)`,
+                  WebkitBackdropFilter: `blur(${glassIntensity}px) saturate(150%)`,
+                  background: `rgba(255,255,255,${Math.min(glassIntensity / 100, 0.5) + 0.08})`,
+                  borderColor: `${accentColor}55`,
+                  boxShadow: `0 12px 32px rgba(0,0,0,0.18), inset 0 1px 0 rgba(255,255,255,0.4)`,
+                  color: accentColor,
+                }}
+              >
+                <Sparkles size={14} />
+                <span>Liquid Glass</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
         {/* ⚙️ Painel 3: Motor de Automação & Segurança (CRIPTO) */}
-        <div className="p-5 bg-white dark:bg-[#1e1e24] rounded-2xl border border-slate-200 dark:border-[#2e2e34] shadow-sm space-y-5">
+        <div className="p-5 liquid-glass-surface rounded-2xl space-y-5">
           <div className="flex items-center gap-2 border-b border-slate-100 dark:border-[#2e2e34] pb-3">
             <Cpu size={16} style={{ color: accentColor }} />
             <h3 className="text-xs font-bold text-slate-800 dark:text-white uppercase tracking-wider">
@@ -349,7 +405,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         </div>
 
         {/* 📈 Painel 4: Parâmetros Financeiros & ROI */}
-        <div className="p-5 bg-white dark:bg-[#1e1e24] rounded-2xl border border-slate-200 dark:border-[#2e2e34] shadow-sm space-y-4">
+        <div className="p-5 liquid-glass-surface rounded-2xl space-y-4">
           <div className="flex items-center gap-2 border-b border-slate-100 dark:border-[#2e2e34] pb-3">
             <Calculator size={16} style={{ color: accentColor }} />
             <h3 className="text-xs font-bold text-slate-800 dark:text-white uppercase tracking-wider">

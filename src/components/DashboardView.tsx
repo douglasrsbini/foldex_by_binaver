@@ -20,6 +20,7 @@ import {
   Settings2 
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next'; // ⚡ Óculos Mágicos
+import { StorageHealthPanel } from './StorageHealthPanel';
 
 interface DashboardViewProps {
   hourlyRate: number;
@@ -52,22 +53,24 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ hourlyRate, accent
   const loadLogs = async () => {
     try {
       const res = await invoke<AuditLog[]>('get_audit_logs');
-      setLogs(res);
+      setLogs(res ?? []);
     } catch (e) {
       console.error(e);
+      setLogs([]);
     }
   };
 
   const uniqueBatches = useMemo(() => {
     const set = new Set<string>();
-    logs.forEach(l => set.add(l.batch_id));
+    logs.forEach(l => { if (l?.batch_id) set.add(l.batch_id); });
     return Array.from(set);
   }, [logs]);
 
   const filteredLogs = useMemo(() => {
     const now = new Date();
 
-    return logs.filter((log) => {
+    return (logs ?? []).filter((log) => {
+      if (!log) return false;
       if (actionFilter !== 'ALL' && log.action_type !== actionFilter) return false;
       if (batchFilter !== 'ALL' && log.batch_id !== batchFilter) return false;
 
@@ -116,7 +119,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ hourlyRate, accent
   }, [logs, periodType, startDate, endDate, actionFilter, batchFilter]);
 
   const totalProcessed = filteredLogs.length;
-  const totalSizeBytes = filteredLogs.reduce((acc, l) => acc + l.file_size_bytes, 0);
+  const totalSizeBytes = filteredLogs.reduce((acc, l) => acc + (l.file_size_bytes ?? 0), 0);
   const totalSizeMB = (totalSizeBytes / (1024 * 1024)).toFixed(2);
   const hoursSaved = ((totalProcessed * 20) / 3600).toFixed(1);
   const moneySaved = (parseFloat(hoursSaved) * hourlyRate).toFixed(2);
@@ -136,7 +139,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ hourlyRate, accent
   const actionCounts = useMemo(() => {
     const counts: Record<string, number> = {};
     filteredLogs.forEach(l => {
-      const translated = translateActionForChart(l.action_type);
+      const translated = translateActionForChart(l?.action_type ?? 'DESCONHECIDO');
       counts[translated] = (counts[translated] || 0) + 1;
     });
     return counts;
@@ -164,7 +167,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ hourlyRate, accent
 
       if (!map[key]) map[key] = { count: 0, size: 0 };
       map[key].count += 1;
-      map[key].size += l.file_size_bytes;
+      map[key].size += l.file_size_bytes ?? 0;
     });
 
     return Object.entries(map).sort(([a], [b]) => a.localeCompare(b)).slice(-8);
@@ -180,7 +183,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ hourlyRate, accent
 
     const headers = t('dashboard.csv_headers');
     const rows = filteredLogs.map(l => 
-      `"${l.batch_id}";"${l.executed_at ?? ''}";"${l.action_type}";"${l.original_path}";"${l.destination_path || ''}";"${l.file_size_bytes}";"${l.windows_user || ''}";"${l.status}"`
+      `"${l.batch_id}";"${l.executed_at ?? ''}";"${l.action_type}";"${l.original_path}";"${l.destination_path || ''}";"${l.file_size_bytes ?? 0}";"${l.windows_user || ''}";"${l.status}"`
     ).join('\n');
 
     const blob = new Blob(['\uFEFF' + headers + rows], { type: 'text/csv;charset=utf-8;' });
@@ -223,8 +226,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ hourlyRate, accent
         }
       `}</style>
 
+      <StorageHealthPanel accentColor={accentColor} />
+
       {/* Barra de Filtros */}
-      <div className="p-3.5 bg-white dark:bg-[#1e1e24] rounded-2xl border border-slate-200 dark:border-[#2e2e34] shadow-sm space-y-3 shrink-0 print-hide">
+      <div className="p-3.5 bg-white/65 dark:bg-slate-950/55 backdrop-blur-2xl rounded-2xl border border-white/60 dark:border-white/10 shadow-sm space-y-3 shrink-0 print-hide">
         <div className="flex flex-wrap items-center justify-between gap-2.5">
           <div className="flex flex-wrap items-center gap-2">
             <div className="flex items-center gap-1.5 text-xs font-bold text-slate-700 dark:text-slate-200">
@@ -353,7 +358,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ hourlyRate, accent
 
       {/* Cartões de Indicadores Chave (KPIs) */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 shrink-0 print-full">
-        <div className="p-4 bg-white dark:bg-[#1e1e24] rounded-2xl border border-slate-200 dark:border-[#2e2e34] shadow-sm space-y-1">
+        <div className="p-4 bg-white/65 dark:bg-slate-950/55 backdrop-blur-2xl rounded-2xl border border-white/60 dark:border-white/10 shadow-sm space-y-1">
           <div className="flex items-center gap-1.5 text-slate-400 text-[10px] font-bold uppercase tracking-wider">
             <FileSpreadsheet size={14} /> {t('dashboard.card_files')}
           </div>

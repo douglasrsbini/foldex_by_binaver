@@ -679,6 +679,56 @@
     "btn_prev": "Anterior",
     "btn_next": "Próximo",
     "btn_finish": "Concluir e Começar",
+    "current_steps": {
+      "0": {
+        "title": "Conheça o Foldex Automate",
+        "subtitle": "Automatize a organização dos seus arquivos com segurança",
+        "description": "O Foldex trabalha com suas pastas locais e transforma tarefas repetitivas em regras claras. Este guia mostra o caminho completo, do primeiro nome até a ativação.",
+        "h1": "Processamento realizado no computador",
+        "h2": "Regras editáveis e fáceis de revisar",
+        "h3": "Você decide quando uma ação será executada"
+      },
+      "1": {
+        "title": "Dê um nome e escolha a origem",
+        "subtitle": "Comece pela pasta que recebe os arquivos",
+        "description": "No Construtor de Regras, informe um nome reconhecível e selecione a pasta de origem. Ela é o ponto de entrada dos arquivos que a regra vai analisar.",
+        "h1": "Use nomes que expliquem a tarefa",
+        "h2": "Escolha uma pasta local ou de rede",
+        "h3": "O arquivo original só muda quando você definir uma ação"
+      },
+      "2": {
+        "title": "Defina condições e ações",
+        "subtitle": "Explique ao sistema o que procurar e fazer",
+        "description": "Combine filtros por extensão, nome, tamanho ou data. Depois escolha entre mover, copiar, renomear, excluir ou compactar, com opções de texto e pastas dinâmicas.",
+        "h1": "Combine filtros com AND ou OR",
+        "h2": "Escolha o destino e a política de conflitos",
+        "h3": "Use modelos rápidos quando o fluxo for comum"
+      },
+      "3": {
+        "title": "Confira com a Simulação",
+        "subtitle": "Veja o resultado antes de tocar nos arquivos",
+        "description": "A tela de Simulação mostra a relação de origem e destino para a regra selecionada. Use esta etapa para encontrar conflitos e validar o resultado com tranquilidade.",
+        "h1": "Visualize cada operação planejada",
+        "h2": "Valide os filtros antes da execução",
+        "h3": "Evite alterações inesperadas"
+      },
+      "4": {
+        "title": "Acompanhe a Auditoria",
+        "subtitle": "Tudo o que acontece fica registrado",
+        "description": "A tela de Auditoria reúne os lotes executados, status e detalhes das operações. Quando disponível, o rollback permite reverter uma ação de forma controlada.",
+        "h1": "Consulte o histórico por lote",
+        "h2": "Confira origem, destino e status",
+        "h3": "Restaure operações reversíveis"
+      },
+      "5": {
+        "title": "Personalize seu ambiente",
+        "subtitle": "Ajuste aparência, notificações e acesso",
+        "description": "Em Configurações você controla tema, cor de destaque, notificações e parâmetros do motor. Em Conta e Licença, acompanhe o plano e o dispositivo vinculado.",
+        "h1": "Use o tema claro ou escuro",
+        "h2": "Configure alertas para acompanhar o sistema",
+        "h3": "Revise o status da licença quando precisar"
+      }
+    },
     "steps": {
       "0": {
         "title": "Bem-vindo ao Binaver Foldex Enterprise!",

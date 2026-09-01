@@ -101,20 +101,22 @@ export const BackupView: React.FC<BackupViewProps> = ({ accentColor }) => {
   const loadTasks = async () => {
     try {
       const result = await invoke<BackupTask[]>('get_backup_tasks');
-      setTasks(result);
+      setTasks(result ?? []);
       setSelectedTasks([]);
     } catch (error) {
       console.error("Erro ao carregar tarefas:", error);
+      setTasks([]);
     }
   };
 
   const loadLogs = async () => {
     try {
       const result = await invoke<BackupLog[]>('get_backup_logs');
-      setLogs(result);
+      setLogs(result ?? []);
       setView('LOGS');
     } catch (error) {
       alert("Erro ao carregar logs: " + error);
+      setLogs([]);
     }
   };
 
@@ -175,8 +177,8 @@ export const BackupView: React.FC<BackupViewProps> = ({ accentColor }) => {
     if (!taskSearch) return true;
     const s = taskSearch.toLowerCase();
     return (
-      task.task_name.toLowerCase().includes(s) ||
-      task.destination_dir.toLowerCase().includes(s) ||
+      (task.task_name ?? '').toLowerCase().includes(s) ||
+      (task.destination_dir ?? '').toLowerCase().includes(s) ||
       (task.upload_offsite && 'nuvem ftp'.includes(s)) ||
       (task.is_scheduled && 'agendado automático'.includes(s))
     );
@@ -274,16 +276,16 @@ export const BackupView: React.FC<BackupViewProps> = ({ accentColor }) => {
   const processedLogs = useMemo(() => {
     let result = logs.filter(log => {
       const s = logSearch.toLowerCase();
-      const matchSearch = log.task_name.toLowerCase().includes(s) || 
-                          log.message.toLowerCase().includes(s) ||
-                          log.created_at.includes(s);
+      const matchSearch = (log.task_name ?? '').toLowerCase().includes(s) || 
+                          (log.message ?? '').toLowerCase().includes(s) ||
+                          (log.created_at ?? '').includes(s);
       const matchStatus = logStatusFilter === 'ALL' || log.status === logStatusFilter;
       return matchSearch && matchStatus;
     });
 
     if (logDateOperator !== 'ALL') {
       result = result.filter(log => {
-        const logDate = log.created_at.split(' ')[0];
+        const logDate = (log.created_at ?? '').split(' ')[0];
         if (logDateOperator === 'BETWEEN' && logDateStart && logDateEnd) return logDate >= logDateStart && logDate <= logDateEnd;
         if (logDateOperator === 'AFTER' && logDateSingle) return logDate > logDateSingle;
         if (logDateOperator === 'BEFORE' && logDateSingle) return logDate < logDateSingle;
@@ -293,9 +295,9 @@ export const BackupView: React.FC<BackupViewProps> = ({ accentColor }) => {
 
     result.sort((a, b) => {
       let comparison = 0;
-      if (sortField === 'created_at') comparison = a.created_at.localeCompare(b.created_at);
-      else if (sortField === 'task_name') comparison = a.task_name.localeCompare(b.task_name);
-      else if (sortField === 'status') comparison = a.status.localeCompare(b.status);
+      if (sortField === 'created_at') comparison = (a.created_at ?? '').localeCompare(b.created_at ?? '');
+      else if (sortField === 'task_name') comparison = (a.task_name ?? '').localeCompare(b.task_name ?? '');
+      else if (sortField === 'status') comparison = (a.status ?? '').localeCompare(b.status ?? '');
       return sortOrder === 'asc' ? comparison : -comparison;
     });
 
@@ -320,10 +322,10 @@ export const BackupView: React.FC<BackupViewProps> = ({ accentColor }) => {
     const csvContent = [
       headers.join(';'),
       ...processedLogs.map(log => {
-        const date = log.created_at;
-        const name = `"${log.task_name.replace(/"/g, '""')}"`;
+        const date = log.created_at ?? '';
+        const name = `"${(log.task_name ?? '').replace(/"/g, '""')}"`;
         const status = log.status === 'SUCCESS' ? 'Sucesso' : 'Falha';
-        const message = `"${log.message.replace(/"/g, '""')}"`;
+        const message = `"${(log.message ?? '').replace(/"/g, '""')}"`;
         return `${date};${name};${status};${message}`;
       })
     ].join('\n');
@@ -342,7 +344,7 @@ export const BackupView: React.FC<BackupViewProps> = ({ accentColor }) => {
   return (
     <div className="flex flex-col h-full gap-2.5 overflow-hidden select-none max-w-6xl w-full mx-auto px-2">
       
-      <div className="bg-white dark:bg-[#1e1e24] p-4 rounded-2xl border border-slate-200 dark:border-[#2e2e34] shadow-xs flex items-center justify-between shrink-0">
+      <div className="liquid-glass-surface p-4 rounded-2xl flex items-center justify-between shrink-0">
         <div className="flex items-center gap-2">
           <Database size={18} style={{ color: accentColor }} />
           <div>
@@ -365,7 +367,7 @@ export const BackupView: React.FC<BackupViewProps> = ({ accentColor }) => {
 
       {view === 'LIST' && (
         <div className="flex-1 overflow-y-auto custom-scrollbar flex flex-col gap-3 pr-1 pb-4">
-          <div className="bg-white dark:bg-[#1e1e24] p-5 rounded-2xl border border-slate-200 dark:border-[#2e2e34] shadow-xs flex-1 flex flex-col relative">
+          <div className="liquid-glass-surface p-5 rounded-2xl flex-1 flex flex-col relative">
             
             <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-100 dark:border-[#2d2d34] min-h-[32px] flex-wrap gap-4">
               {selectedTasks.length > 0 ? (
@@ -512,7 +514,7 @@ export const BackupView: React.FC<BackupViewProps> = ({ accentColor }) => {
             </button>
           </div>
 
-          <div className="bg-white dark:bg-[#1e1e24] p-5 rounded-2xl border border-slate-200 dark:border-[#2e2e34] shadow-xs flex-1 flex flex-col gap-4">
+          <div className="liquid-glass-surface p-5 rounded-2xl flex-1 flex flex-col gap-4">
             
             <div className="grid grid-cols-1 md:grid-cols-12 gap-3 bg-slate-50/50 dark:bg-[#18181c]/50 p-4 rounded-xl border border-slate-100 dark:border-[#2c2c34]">
               <div className="relative md:col-span-5">

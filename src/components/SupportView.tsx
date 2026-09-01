@@ -156,7 +156,7 @@ export const SupportView: React.FC<SupportViewProps> = ({ accentColor, onOpenTou
     <div className="flex flex-col h-full gap-4 overflow-y-auto pr-1 select-none w-full">
       
       {/* Cabeçalho */}
-      <div className="p-4 bg-white dark:bg-[#1e1e24] rounded-2xl border border-slate-200 dark:border-[#2e2e34] shadow-sm flex flex-wrap items-center justify-between gap-3">
+      <div className="p-4 liquid-glass-surface rounded-2xl flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2.5">
           <Headphones size={18} style={{ color: accentColor }} />
           <div>
@@ -186,7 +186,7 @@ export const SupportView: React.FC<SupportViewProps> = ({ accentColor, onOpenTou
       </div>
 
       {/* Manual Interativo do Usuário */}
-      <div className="p-5 bg-white dark:bg-[#1e1e24] rounded-2xl border border-slate-200 dark:border-[#2e2e34] shadow-sm space-y-4">
+      <div className="p-5 liquid-glass-surface rounded-2xl space-y-4">
         <div className="flex flex-wrap items-center justify-between border-b border-slate-100 dark:border-[#2e2e34] pb-3 gap-2">
           <div className="flex items-center gap-2">
             <BookOpen size={16} style={{ color: accentColor }} />
@@ -242,7 +242,7 @@ export const SupportView: React.FC<SupportViewProps> = ({ accentColor, onOpenTou
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         
         {/* E-mail Corporativo */}
-        <div className="p-5 bg-white dark:bg-[#1e1e24] rounded-2xl border border-slate-200 dark:border-[#2e2e34] shadow-sm flex flex-col justify-between space-y-4">
+        <div className="p-5 liquid-glass-surface rounded-2xl flex flex-col justify-between space-y-4">
           <div className="space-y-2">
             <div className="w-9 h-9 rounded-xl bg-blue-50 dark:bg-blue-950/40 text-blue-600 flex items-center justify-center">
               <Mail size={18} />
@@ -262,7 +262,7 @@ export const SupportView: React.FC<SupportViewProps> = ({ accentColor, onOpenTou
         </div>
 
         {/* WhatsApp Corporativo */}
-        <div className="p-5 bg-white dark:bg-[#1e1e24] rounded-2xl border border-slate-200 dark:border-[#2e2e34] shadow-sm flex flex-col justify-between space-y-4">
+        <div className="p-5 liquid-glass-surface rounded-2xl flex flex-col justify-between space-y-4">
           <div className="space-y-2">
             <div className="w-9 h-9 rounded-xl bg-green-50 dark:bg-green-950/40 text-green-600 flex items-center justify-center">
               <MessageSquare size={18} />
@@ -282,7 +282,7 @@ export const SupportView: React.FC<SupportViewProps> = ({ accentColor, onOpenTou
         </div>
 
         {/* Portal Oficial */}
-        <div className="p-5 bg-white dark:bg-[#1e1e24] rounded-2xl border border-slate-200 dark:border-[#2e2e34] shadow-sm flex flex-col justify-between space-y-4">
+        <div className="p-5 liquid-glass-surface rounded-2xl flex flex-col justify-between space-y-4">
           <div className="space-y-2">
             <div className="w-9 h-9 rounded-xl bg-purple-50 dark:bg-purple-950/40 text-purple-600 flex items-center justify-center">
               <Globe size={18} />
@@ -305,7 +305,7 @@ export const SupportView: React.FC<SupportViewProps> = ({ accentColor, onOpenTou
       </div>
 
       {/* FAQ */}
-      <div className="p-5 bg-white dark:bg-[#1e1e24] rounded-2xl border border-slate-200 dark:border-[#2e2e34] shadow-sm space-y-3">
+      <div className="p-5 liquid-glass-surface rounded-2xl space-y-3">
         <div className="flex items-center gap-2 border-b border-slate-100 dark:border-[#2e2e34] pb-3">
           <FileQuestion size={16} style={{ color: accentColor }} />
           <h3 className="text-xs font-bold text-slate-800 dark:text-white uppercase tracking-wider">

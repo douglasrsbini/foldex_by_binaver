@@ -11,6 +11,10 @@ use commands::rules::*;
 use commands::engine::*;
 use services::watcher::start_background_watcher;
 use commands::backup::*;
+use commands::storage_health::*;
+use commands::ocr::*;
+use commands::ai_rename::*;
+use commands::convert::*;
 
 fn main() {
     if let Err(e) = init_database() {
@@ -80,7 +84,15 @@ fn main() {
 
             //🤖IA Copilot Command
             generate_rule_via_ai,
-            chat_with_foldex_agent
+            chat_with_foldex_agent,
+
+            // 🔬 Governança de Dados Corporativa
+            scan_storage_health_command,
+            fix_storage_issues_command,
+            extract_ocr_text_command,
+            check_ocr_keyword_command,
+            suggest_ai_rename_command,
+            convert_file_command
         ])
         .run(tauri::generate_context!())
         .expect("Erro ao executar aplicação Tauri");

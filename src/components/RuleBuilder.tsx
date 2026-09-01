@@ -12,6 +12,10 @@ import {
   ArrowLeft, CheckCircle2, ChevronRight, ChevronDown, ShieldCheck
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { EmptyState } from './EmptyState';
+import { useLicense } from '../context/LicenseContext';
+import { RuleWizardProgress } from './RuleBuilder/RuleWizardProgress';
+import { RuleBuilderHeader } from './RuleBuilder/RuleBuilderHeader';
 
 const ENABLE_AI_FEATURES = false; 
 
@@ -28,6 +32,7 @@ type RegexPreset = 'NONE' | 'NUMBERS_ONLY' | 'EXTRACT_CPF' | 'EXTRACT_CNPJ' | 'C
 
 export const RuleBuilder: React.FC<RuleBuilderProps> = ({ initialSource, accentColor, onNavigateToAccount, userNiche }) => {
   const { t } = useTranslation(); 
+  const { canUseFeature, plan } = useLicense();
 
   const [currentStep, setCurrentStep] = useState<number>(0);
   const [furthestStep, setFurthestStep] = useState<number>(0);
@@ -46,6 +51,7 @@ export const RuleBuilder: React.FC<RuleBuilderProps> = ({ initialSource, accentC
   ]);
   
   const [actionType, setActionType] = useState('MOVE');
+  const [convertFormat, setConvertFormat] = useState('PDF');
   const [targetDir, setTargetDir] = useState('');
   const [folderMode, setFolderMode] = useState<'existente' | 'criar'>('existente');
   const [createPattern, setCreatePattern] = useState('{ano}/{mes}');
@@ -78,11 +84,7 @@ export const RuleBuilder: React.FC<RuleBuilderProps> = ({ initialSource, accentC
   const [sortField, setSortField] = useState<SortField>('id');
   const [sortOrder, setSortOrder] = useState<SortOrder>('asc');
 
-  const isCorePlan = useMemo(() => {
-    if (!license || !license.is_activated) return true;
-    const plan = String(license.plan_name || '').toLowerCase();
-    return plan.includes('core') || plan.includes('basic');
-  }, [license]);
+  const canUseAutopilot = canUseFeature('AUTOPILOT');
 
   const masterLogicOperator = useMemo(() => {
     if (!Array.isArray(filters)) return 'AND';
@@ -260,9 +262,10 @@ export const RuleBuilder: React.FC<RuleBuilderProps> = ({ initialSource, accentC
     setIsLoading(true);
     try {
       const res = await invoke<Rule[]>('get_rules');
-      setRules(res);
+      setRules(res ?? []);
     } catch (e) {
       console.error(e);
+      setRules([]);
     } finally {
       setIsLoading(false);
     }
@@ -361,7 +364,7 @@ export const RuleBuilder: React.FC<RuleBuilderProps> = ({ initialSource, accentC
   };
 
   const handleToggleAutoPilot = async (rule: Rule) => {
-    if (isCorePlan) {
+    if (!canUseAutopilot) {
       setUpsellFeature('AUTOPILOT');
       return;
     }
@@ -443,7 +446,8 @@ export const RuleBuilder: React.FC<RuleBuilderProps> = ({ initialSource, accentC
         replace_spaces: replaceSpaces,
         case_format: caseFormat,
         regex_pattern: regexPattern,
-        regex_replacement: regexReplacement
+        regex_replacement: regexReplacement,
+        convert_format: actionType === 'CONVERT_FORMAT' ? convertFormat : undefined
       }]
     };
 
@@ -489,6 +493,7 @@ export const RuleBuilder: React.FC<RuleBuilderProps> = ({ initialSource, accentC
     setRegexPreset('NONE');
     setRegexPattern('');
     setRegexReplacement('');
+    setConvertFormat('PDF');
     setCurrentStep(0);
     setFurthestStep(0);
     setFormError(null);
@@ -528,76 +533,28 @@ export const RuleBuilder: React.FC<RuleBuilderProps> = ({ initialSource, accentC
   return (
     <div className="flex flex-col h-full w-full select-none max-w-7xl mx-auto overflow-hidden">
       
-      {/* 🌟 CABEÇALHO DO WIZARD */}
-      <div className="flex items-center justify-between px-6 py-5 shrink-0 bg-transparent">
-        <div>
-          <h1 className="text-xl sm:text-2xl font-extrabold text-slate-800 dark:text-white tracking-tight">
-            {editingId ? 'Editar Regra' : 'Criar uma regra'}
-          </h1>
-          <p className="text-xs text-slate-500 mt-1">Uma etapa de cada vez. Você pode voltar e ajustar quando precisar.</p>
-        </div>
-        <div className="flex items-center gap-2">
-          {!editingId && (
-            <button 
-              onClick={() => setIsTemplatesModalOpen(true)}
-              className="px-4 py-2 rounded-xl bg-white dark:bg-[#1e1e24] text-slate-700 dark:text-slate-200 text-xs font-bold border border-slate-200 dark:border-[#2e2e34] shadow-sm hover:border-blue-400 dark:hover:border-blue-500 transition-colors flex items-center gap-2"
-            >
-              <Layers size={14} className="text-blue-500" /> Usar modelo
-            </button>
-          )}
-          {editingId && (
-            <button 
-              onClick={resetForm}
-              className="px-4 py-2 rounded-xl bg-red-50 dark:bg-red-950/30 text-red-600 dark:text-red-400 text-xs font-bold border border-red-200 dark:border-red-800 hover:bg-red-100 dark:hover:bg-red-950/50 transition-colors flex items-center gap-2"
-            >
-              <X size={14} /> Cancelar
-            </button>
-          )}
-          <button 
-            onClick={() => setIsRulesModalOpen(true)}
-            className="px-4 py-2 rounded-xl bg-slate-100 dark:bg-[#202024] text-slate-700 dark:text-slate-200 text-xs font-bold border border-slate-200 dark:border-[#2e2e34] hover:bg-slate-200 dark:hover:bg-[#27272a] transition-colors flex items-center gap-2"
-          >
-            <ListOrdered size={14} /> Minhas regras <span className="bg-slate-200 dark:bg-[#2e2e34] px-1.5 py-0.5 rounded text-[10px]">{Array.isArray(rules) ? rules.length : 0}</span>
-          </button>
-        </div>
-      </div>
+      <RuleBuilderHeader
+        isEditing={editingId !== null}
+        ruleCount={Array.isArray(rules) ? rules.length : 0}
+        accentColor={accentColor}
+        onOpenTemplates={() => setIsTemplatesModalOpen(true)}
+        onOpenRules={() => setIsRulesModalOpen(true)}
+        onCancelEditing={resetForm}
+      />
 
-      {/* 🌟 BARRA DE PROGRESSO */}
-      <div className="px-6 shrink-0 mb-6 hidden sm:block">
-        <div className="flex justify-between items-center relative">
-          <div className="absolute left-0 top-1/2 -translate-y-1/2 w-full h-[1px] bg-slate-200 dark:bg-[#2e2e34] z-0"></div>
-          {stepNames.map((name, idx) => {
-            const isCompleted = idx < currentStep;
-            const isActive = idx === currentStep;
-            const isAccessible = idx <= furthestStep;
-            
-            return (
-              <div 
-                key={idx} 
-                onClick={() => { if (isAccessible) setCurrentStep(idx); }}
-                className={`relative z-10 flex flex-col items-center gap-2 ${isAccessible ? 'cursor-pointer' : 'cursor-not-allowed opacity-50'}`}
-              >
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all duration-300 ${
-                  isActive ? 'bg-blue-600 border-blue-600 text-white shadow-[0_0_0_4px_rgba(37,99,235,0.15)] scale-110' : 
-                  isCompleted ? 'bg-slate-800 dark:bg-[#18181b] border-slate-700 dark:border-[#383840] text-emerald-400' : 
-                  'bg-white dark:bg-[#18181b] border-slate-300 dark:border-[#383840] text-slate-400'
-                }`}>
-                  {isCompleted ? <CheckCircle2 size={16} /> : (idx + 1)}
-                </div>
-                <span className={`text-[10px] font-bold uppercase tracking-wider ${isActive ? 'text-slate-800 dark:text-white' : 'text-slate-500'}`}>
-                  {name}
-                </span>
-              </div>
-            );
-          })}
-        </div>
-      </div>
+      <RuleWizardProgress
+        steps={stepNames}
+        currentStep={currentStep}
+        furthestStep={furthestStep}
+        accentColor={accentColor}
+        onStepChange={(step) => setCurrentStep(step)}
+      />
 
       {/* 🌟 CORPO DO WIZARD (PAINEL CENTRAL + GUIA LATERAL) */}
       <div className="flex-1 px-6 pb-6 overflow-hidden flex gap-8">
         
         {/* Painel Esquerdo (Formulário) */}
-        <div className="flex-1 bg-white dark:bg-[#191c22] rounded-2xl border border-slate-200 dark:border-[#2a2e37] shadow-sm flex flex-col overflow-hidden">
+        <div className="flex-1 liquid-glass-surface rounded-2xl flex flex-col overflow-hidden">
           
           <div className="flex-1 overflow-y-auto p-6 custom-scrollbar relative">
             
@@ -783,6 +740,7 @@ export const RuleBuilder: React.FC<RuleBuilderProps> = ({ initialSource, accentC
                                   <option value="Extensão">Extensão (Ex: pdf)</option>
                                   <option value="Tipo de Documento (Categoria)">Categoria Pronta</option>
                                   <option value="Nome do Arquivo">Nome do Arquivo</option>
+                                  <option value="Conteúdo do Documento (OCR)">Conteúdo do Documento (OCR)</option>
                                   <option value="Data de Criação">Data de Criação</option>
                                   <option value="Data de Modificação">Data de Modificação</option>
                                   <option value="Tamanho (Bytes)">Tamanho (Bytes)</option>
@@ -885,6 +843,8 @@ export const RuleBuilder: React.FC<RuleBuilderProps> = ({ initialSource, accentC
                       <option value="COPY">Copiar para outra pasta</option>
                       <option value="RENAME">Apenas renomear (na mesma pasta)</option>
                       <option value="ZIP">Compactar em um arquivo ZIP</option>
+                      <option value="CONVERT_FORMAT">Converter para PDF</option>
+                      <option value="AI_RENAME">Tratamento por IA (Renomeação Cognitiva)</option>
                       <option value="DELETE">Excluir (Mover para Lixeira)</option>
                     </select>
                   </div>
@@ -904,6 +864,30 @@ export const RuleBuilder: React.FC<RuleBuilderProps> = ({ initialSource, accentC
                     </select>
                   </div>
                 </div>
+
+                {actionType === 'CONVERT_FORMAT' && (
+                  <div className="rounded-xl border border-violet-300/60 bg-violet-50/70 p-4 dark:border-violet-500/30 dark:bg-violet-950/30">
+                    <label className="mb-2 block text-[11px] font-bold uppercase tracking-wider text-violet-700 dark:text-violet-300">
+                      Formato de destino
+                    </label>
+                    <select
+                      value={convertFormat}
+                      onChange={(event) => setConvertFormat(event.target.value)}
+                      className="w-full rounded-xl border border-violet-200 bg-white px-4 py-3 text-sm font-medium text-slate-800 outline-none focus:border-violet-500 dark:border-violet-700 dark:bg-[#13161b] dark:text-white"
+                    >
+                      <option value="PDF">PDF</option>
+                    </select>
+                    <p className="mt-2 text-xs text-violet-700/80 dark:text-violet-200/80">
+                      Converte DOC/DOCX, XLS/XLSX, PNG e JPG/JPEG para PDF usando o LibreOffice instalado localmente.
+                    </p>
+                  </div>
+                )}
+
+                {actionType === 'AI_RENAME' && (
+                  <div className="rounded-xl border border-fuchsia-300/60 bg-fuchsia-50/70 p-4 text-xs text-fuchsia-800 dark:border-fuchsia-500/30 dark:bg-fuchsia-950/30 dark:text-fuchsia-100">
+                    A IA extrai o texto do documento por OCR e sugere um nome padronizado. Configure sua chave Gemini em Configurações antes de executar.
+                  </div>
+                )}
 
                 {actionType !== 'DELETE' && actionType !== 'RENAME' && (
                   <div className="space-y-2">
@@ -1154,18 +1138,18 @@ export const RuleBuilder: React.FC<RuleBuilderProps> = ({ initialSource, accentC
 
                   {/* Opção: Execução Automática (Sentinel) */}
                   <div 
-                    onClick={() => setEnableSentinel(true)}
+                    onClick={() => canUseAutopilot ? setEnableSentinel(true) : setUpsellFeature('AUTOPILOT')}
                     className={`p-6 rounded-2xl border-2 cursor-pointer transition-all relative ${
                       enableSentinel 
                         ? 'bg-emerald-50 dark:bg-emerald-950/20 border-emerald-500 shadow-lg' 
-                        : 'bg-slate-50 dark:bg-[#13161b] border-slate-200 dark:border-[#2a2e37] hover:border-slate-300 dark:hover:border-[#383840]'
+                        : canUseAutopilot
+                          ? 'bg-slate-50 dark:bg-[#13161b] border-slate-200 dark:border-[#2a2e37] hover:border-slate-300 dark:hover:border-[#383840]'
+                          : 'bg-slate-100/70 dark:bg-[#13161b]/70 border-slate-200 dark:border-[#2a2e37] opacity-75'
                     }`}
                   >
-                    {!isCorePlan && (
-                      <div className="absolute -top-2 -right-2 px-2 py-1 bg-amber-500 text-white text-[9px] font-bold rounded-full">
-                        {isCorePlan ? 'Bloqueado' : 'Plano Pro+'}
-                      </div>
-                    )}
+                    <div className={`absolute -top-2 -right-2 px-2 py-1 text-white text-[9px] font-bold rounded-full ${canUseAutopilot ? 'bg-emerald-500' : 'bg-slate-500'}`}>
+                      {canUseAutopilot ? 'Plano Enterprise' : 'Exclusivo Enterprise'}
+                    </div>
                     <div className="flex items-center gap-3 mb-3">
                       <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
                         enableSentinel 
@@ -1174,11 +1158,15 @@ export const RuleBuilder: React.FC<RuleBuilderProps> = ({ initialSource, accentC
                       }`}>
                         {enableSentinel && <div className="w-2 h-2 bg-white rounded-full" />}
                       </div>
-                      <h3 className="text-sm font-bold text-slate-800 dark:text-white">Automação com Sentinel</h3>
+                      <h3 className="text-sm font-bold text-slate-800 dark:text-white flex items-center gap-2">
+                        Automação com Sentinel
+                        {!canUseAutopilot && <Lock size={13} className="text-slate-400" />}
+                      </h3>
                     </div>
                     <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
                       O Sentinel monitora continuamente a pasta de origem. Quando novos arquivos aparecerem, a regra é executada automaticamente.
                     </p>
+                    {!canUseAutopilot && <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400">Seu plano atual ({plan}) não inclui automação contínua.</p>}
                     <div className="mt-4 pt-4 border-t border-slate-200 dark:border-[#2a2e37]">
                       <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Vantagens:</p>
                       <ul className="text-[10px] text-slate-600 dark:text-slate-400 space-y-1 mt-2">
@@ -1201,7 +1189,7 @@ export const RuleBuilder: React.FC<RuleBuilderProps> = ({ initialSource, accentC
           </div>
 
           {/* RODAPÉ DO WIZARD (NAVEGAÇÃO) */}
-          <div className="px-6 py-4 bg-slate-50 dark:bg-[#13161b] border-t border-slate-200 dark:border-[#2a2e37] shrink-0 flex items-center justify-between">
+          <div className="px-6 py-4 bg-white/45 dark:bg-white/[0.04] border-t border-white/60 dark:border-white/10 shrink-0 flex items-center justify-between backdrop-blur-xl">
             <div className="flex flex-col">
               {formError && <span className="text-[10px] font-bold text-red-500 uppercase animate-pulse">{formError}</span>}
             </div>
@@ -1325,7 +1313,7 @@ export const RuleBuilder: React.FC<RuleBuilderProps> = ({ initialSource, accentC
       {/* 🌟 MODAL: MODELOS PRONTOS */}
       {isTemplatesModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-          <div className="bg-white dark:bg-[#191c22] w-full max-w-3xl rounded-3xl p-6 border border-slate-200 dark:border-[#2a2e37] shadow-2xl flex flex-col max-h-[85vh]">
+          <div className="liquid-glass-surface w-full max-w-3xl rounded-3xl p-6 shadow-2xl flex flex-col max-h-[85vh]">
             <div className="flex items-center justify-between pb-4 border-b border-slate-200 dark:border-[#2a2e37] shrink-0">
               <div>
                 <h2 className="text-lg font-bold text-slate-800 dark:text-white">Comece com um modelo</h2>
@@ -1362,7 +1350,7 @@ export const RuleBuilder: React.FC<RuleBuilderProps> = ({ initialSource, accentC
       {/* 🌟 MODAL: MINHAS REGRAS (ATIVAÇÃO/DESATIVAÇÃO) */}
       {isRulesModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-end p-0 sm:p-4 bg-black/60 backdrop-blur-sm">
-          <div className="bg-white dark:bg-[#191c22] w-full max-w-md h-full sm:h-auto sm:max-h-[90vh] sm:rounded-3xl p-6 border-l sm:border border-slate-200 dark:border-[#2a2e37] shadow-2xl flex flex-col animate-in slide-in-from-right-8 duration-300">
+          <div className="liquid-glass-surface w-full max-w-md h-full sm:h-auto sm:max-h-[90vh] sm:rounded-3xl p-6 shadow-2xl flex flex-col animate-in slide-in-from-right-8 duration-300">
             <div className="flex items-center justify-between pb-4 border-b border-slate-200 dark:border-[#2a2e37] shrink-0">
               <div>
                 <h2 className="text-lg font-bold text-slate-800 dark:text-white">Minhas Regras</h2>
@@ -1391,13 +1379,13 @@ export const RuleBuilder: React.FC<RuleBuilderProps> = ({ initialSource, accentC
                   <p>Carregando regras...</p>
                 </div>
               ) : filteredAndSortedRules.length === 0 ? (
-                <div className="text-center py-10">
-                  <div className="w-12 h-12 rounded-2xl bg-slate-100 dark:bg-[#20242c] text-slate-400 flex items-center justify-center mx-auto mb-4">
-                    <ListOrdered size={24} />
-                  </div>
-                  <h3 className="text-sm font-bold text-slate-800 dark:text-white mb-1">Nenhuma regra encontrada</h3>
-                  <p className="text-xs text-slate-500">Crie uma nova regra no assistente para vê-la aqui.</p>
-                </div>
+                <EmptyState
+                  type="NO_RULES"
+                  accentColor={accentColor}
+                  title={ruleSearch ? 'Nenhuma regra encontrada' : undefined}
+                  description={ruleSearch ? 'Ajuste a busca ou crie uma nova regra.' : undefined}
+                  onPrimaryAction={() => { setIsRulesModalOpen(false); setCurrentStep(0); }}
+                />
               ) : (
                 filteredAndSortedRules.map((r) => (
                   <div key={r.id} className="p-4 bg-slate-50 dark:bg-[#13161b] rounded-xl border border-slate-200 dark:border-[#2a2e37] space-y-3">
@@ -1426,6 +1414,7 @@ export const RuleBuilder: React.FC<RuleBuilderProps> = ({ initialSource, accentC
                             if (Array.isArray(r.actions) && r.actions.length > 0) {
                               const firstAction = r.actions[0];
                               setActionType(firstAction?.action_type || 'MOVE');
+                              setConvertFormat(firstAction?.convert_format || 'PDF');
                               
                               const targetPattern = firstAction?.target_pattern || '';
                               const sourceDirFallback = r.source_directory || '';
@@ -1495,15 +1484,15 @@ export const RuleBuilder: React.FC<RuleBuilderProps> = ({ initialSource, accentC
                       <button
                         onClick={() => handleToggleAutoPilot(r)}
                         className={`px-4 py-1.5 rounded-full text-[10px] font-bold flex items-center gap-1.5 transition-all shadow-xs shrink-0 ${
-                          isCorePlan 
+                          !canUseAutopilot 
                             ? 'bg-slate-200/40 dark:bg-[#20242c] text-slate-400 cursor-not-allowed border border-slate-200 dark:border-[#343a45]' 
                             : r?.is_sentinel_active
                               ? 'bg-emerald-100/70 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700 hover:bg-emerald-100 dark:hover:bg-emerald-950/70'
                               : 'bg-slate-100 dark:bg-[#20242c] text-slate-600 dark:text-slate-400 border border-slate-300 dark:border-[#383840] hover:bg-slate-150 dark:hover:bg-[#27272a]'
                         }`}
-                        title={isCorePlan ? "Disponível apenas no plano Foldex Pro" : r?.is_sentinel_active ? "Clique para desligar Sentinel (automação)" : "Clique para ligar Sentinel (automação)"}
+                        title={!canUseAutopilot ? "Disponível apenas no plano Enterprise" : r?.is_sentinel_active ? "Clique para desligar Sentinel (automação)" : "Clique para ligar Sentinel (automação)"}
                       >
-                        {isCorePlan ? (
+                        {!canUseAutopilot ? (
                           <>
                             <Lock size={12} />
                             <span>PRO</span>

@@ -6,10 +6,11 @@ import {
   RefreshCw, Plus, Scissors, Copy, ClipboardPaste, Trash2, Edit3, FileArchive, Info, 
   Search, FolderInput, Star, LayoutGrid, LayoutList, ArrowUpDown, X, FileText, 
   FileSpreadsheet, FileImage, FileCode, FileAudio, FileVideo, Monitor, Download, 
-  Image as ImageIcon, Clock, ChevronDown, CheckSquare, Square, AlertTriangle,
-  Lock, Eye, EyeOff
+  Image as ImageIcon, Clock, ChevronDown, CheckSquare, Square
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next'; // ⚡ Óculos Mágicos Injetados!
+import { EmptyState } from './EmptyState';
+import { DeleteConfirmModal, ZipModal } from './FileExplorerModals';
 
 interface FileExplorerProps {
   onSetSource?: (path: string) => void;
@@ -629,7 +630,7 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ onSetSource, accentC
     <div onContextMenu={(e) => handleContextMenu(e, null)} onClick={() => setSelectedPaths([])} className="flex h-full w-full gap-3 overflow-hidden select-none relative">
       
       {/* 🧭 BARRA LATERAL ESQUERDA */}
-      <div style={{ width: `${sidebarWidth}px` }} onClick={(e) => e.stopPropagation()} className="shrink-0 bg-white dark:bg-[#1e1e24] p-3 rounded-2xl border border-slate-200 dark:border-[#2e2e34] flex flex-col justify-between shadow-sm overflow-y-auto overflow-x-hidden custom-scrollbar relative">
+      <div style={{ width: `${sidebarWidth}px` }} onClick={(e) => e.stopPropagation()} className="shrink-0 bg-white/65 dark:bg-slate-950/55 backdrop-blur-2xl p-3 rounded-2xl border border-white/60 dark:border-white/10 flex flex-col justify-between shadow-sm overflow-y-auto overflow-x-hidden custom-scrollbar relative">
         <div className="space-y-3.5 pb-2">
           <div className="space-y-1">
             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block px-1">{t('explorer.drives_title')}</span>
@@ -718,7 +719,7 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ onSetSource, accentC
       </div>
 
       {/* 📁 PAINEL PRINCIPAL DO EXPLORADOR */}
-      <div onClick={(e) => e.stopPropagation()} className="flex-1 bg-white dark:bg-[#1e1e24] p-4 rounded-2xl border border-slate-200 dark:border-[#2e2e34] flex flex-col space-y-3 shadow-sm min-w-0">
+      <div onClick={(e) => e.stopPropagation()} className="flex-1 bg-white/65 dark:bg-slate-950/55 backdrop-blur-2xl p-4 rounded-2xl border border-white/60 dark:border-white/10 flex flex-col space-y-3 shadow-sm min-w-0">
         
         {/* BARRA SUPERIOR: Navegação & Busca */}
         <div className="flex items-center justify-between gap-2 flex-wrap pb-2 border-b border-slate-100 dark:border-[#2e2e34]">
@@ -803,7 +804,13 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ onSetSource, accentC
           {loading ? (
             <div className="flex-1 flex items-center justify-center text-xs text-slate-400 gap-2"><RefreshCw size={16} className="animate-spin text-blue-500" /><span>{t('explorer.loading')}</span></div>
           ) : filteredAndSortedItems.length === 0 ? (
-            <div className="flex-1 flex items-center justify-center text-xs text-slate-400 italic">{t('explorer.empty_folder')}</div>
+            <EmptyState
+              type="NO_FILES"
+              accentColor={accentColor}
+              title={t('explorer.empty_folder')}
+              description={t('explorer.empty_folder')}
+              onPrimaryAction={() => navigateTo(currentPath, false)}
+            />
           ) : viewMode === 'list' ? (
             
             <div className="flex-1 flex flex-col relative w-full text-xs">
@@ -885,7 +892,7 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ onSetSource, accentC
                     <div className="p-2 rounded-xl bg-slate-100 dark:bg-[#25252b]">{getFileCategoryIcon(item)}</div>
                     <div className="w-full">
                       <p className="text-xs font-semibold text-slate-800 dark:text-white truncate w-full" title={item.name}>{item.name}</p>
-                      <span className="text-[10px] text-slate-400 font-mono block truncate">{item.is_dir ? t('explorer.type_folder') : (item.size_formatted || `${item.size_bytes} B`)}</span>
+                      <span className="text-[10px] text-slate-400 font-mono block truncate">{item.is_dir ? t('explorer.type_folder') : (item.size_formatted || `${item.size_bytes ?? 0} B`)}</span>
                     </div>
                   </div>
                 );
@@ -896,66 +903,30 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ onSetSource, accentC
       </div>
 
       {/* MODAIS DO EXPLORADOR */}
-      {showDeleteModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs z-50 flex items-center justify-center p-4 z-[9999]">
-          <div className="bg-white dark:bg-[#202023] w-full max-w-sm rounded-3xl p-6 border border-slate-200 dark:border-[#333338] shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-100">
-            <div className="flex items-center gap-2.5 text-red-500">
-              <AlertTriangle size={20} />
-              <h3 className="text-sm font-bold uppercase tracking-wider text-slate-800 dark:text-white">{t('explorer.modal_del_title')}</h3>
-            </div>
-            <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
-              {t('explorer.modal_del_desc_1')} <strong className="text-red-500">{selectedPaths.length === 1 ? t('explorer.modal_del_item') : `${selectedPaths.length} ${t('explorer.modal_del_items')}`}</strong>{t('explorer.modal_del_desc_2')}
-            </p>
-            <div className="flex justify-end gap-2 pt-2">
-              <button onClick={() => setShowDeleteModal(false)} className="px-4 py-2 text-xs font-semibold text-slate-400 hover:text-slate-600 transition-colors">{t('explorer.btn_cancel')}</button>
-              <button onClick={executeDelete} className="px-5 py-2 rounded-xl bg-red-500 hover:bg-red-600 text-white text-xs font-bold shadow-sm transition-colors">{t('explorer.btn_yes_delete')}</button>
-            </div>
-          </div>
-        </div>
-      )}
+      <DeleteConfirmModal
+        isOpen={showDeleteModal}
+        selectedCount={selectedPaths.length}
+        onCancel={() => setShowDeleteModal(false)}
+        onConfirm={executeDelete}
+      />
 
       {/* ⚡ NOVO MODAL DE COMPACTAÇÃO (ZIP) */}
-      {showZipModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs z-50 flex items-center justify-center p-4 z-[9999]">
-          <div className="bg-white dark:bg-[#202023] w-full max-w-sm rounded-3xl p-6 border border-slate-200 dark:border-[#333338] shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-100">
-            <h3 className="text-xs font-bold text-slate-800 dark:text-white uppercase tracking-wider flex items-center gap-2">
-              <FileArchive size={16} className="text-amber-500" /> {t('explorer.modal_zip_title')}
-            </h3>
-            
-            <div className="space-y-1.5">
-              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">{t('explorer.modal_zip_name')}</label>
-              <input type="text" value={zipFileName} onChange={(e) => setZipFileName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && executeCompressZip()} autoFocus className="w-full px-3.5 py-2.5 text-xs bg-slate-50 dark:bg-[#18181b] border border-slate-200 dark:border-[#333338] rounded-xl text-slate-800 dark:text-white font-medium outline-none" />
-            </div>
+      <ZipModal
+        isOpen={showZipModal}
+        accentColor={accentColor}
+        zipFileName={zipFileName}
+        setZipFileName={setZipFileName}
+        zipEncrypt={zipEncrypt}
+        setZipEncrypt={setZipEncrypt}
+        zipPassword={zipPassword}
+        setZipPassword={setZipPassword}
+        showZipPassword={showZipPassword}
+        setShowZipPassword={setShowZipPassword}
+        onCancel={() => setShowZipModal(false)}
+        onConfirm={executeCompressZip}
+      />
 
-            <div className="p-3.5 bg-slate-50 dark:bg-[#18181b] rounded-xl border border-slate-200 dark:border-[#2e2e34]">
-              <div className="flex items-center justify-between">
-                <div>
-                  <span className="text-[11px] font-bold flex items-center gap-2 text-slate-800 dark:text-white"><Lock size={15} className="text-emerald-500" /> {t('explorer.modal_zip_protect')}</span>
-                </div>
-                <label className="relative inline-flex items-center cursor-pointer">
-                  <input type="checkbox" checked={zipEncrypt} onChange={(e) => setZipEncrypt(e.target.checked)} className="sr-only peer" />
-                  <div className="w-9 h-5 bg-slate-300 peer-focus:outline-none rounded-full peer dark:bg-[#333338] peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-500"></div>
-                </label>
-              </div>
-              {zipEncrypt && (
-                <div className="mt-3 pt-3 border-t border-slate-200 dark:border-[#2d2d34] relative">
-                  <input type={showZipPassword ? "text" : "password"} placeholder={t('explorer.modal_zip_pass_ph')} value={zipPassword} onChange={(e) => setZipPassword(e.target.value)} className="w-full pl-3 pr-10 py-2 text-xs bg-white dark:bg-[#202024] border border-slate-200 dark:border-[#383840] rounded-xl outline-none font-mono focus:ring-1 focus:ring-emerald-500 transition-shadow" />
-                  <button type="button" onClick={() => setShowZipPassword(!showZipPassword)} className="absolute right-3 top-[22px] text-slate-400 hover:text-emerald-500 transition-colors">
-                    {showZipPassword ? <EyeOff size={15} /> : <Eye size={15} />}
-                  </button>
-                </div>
-              )}
-            </div>
-
-            <div className="flex justify-end gap-2 pt-2">
-              <button onClick={() => setShowZipModal(false)} className="px-4 py-2 text-xs font-semibold text-slate-400 hover:text-slate-600 transition-colors">{t('explorer.btn_cancel')}</button>
-              <button onClick={executeCompressZip} className="px-5 py-2 rounded-xl text-white text-xs font-bold shadow-sm transition-transform active:scale-95" style={{ backgroundColor: accentColor }}>{t('explorer.btn_compress')}</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ⚡ MENU DE CONTEXTO NATIVO */}
+      {/* ⚡ MENU DE CONTEXTO NATIVO (blindado contra item nulo) */}
       {contextMenu.visible && (
         <div 
           id="custom-context-menu"
@@ -964,42 +935,59 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ onSetSource, accentC
           onContextMenu={(e) => e.preventDefault()}
           className="fixed z-[9999] w-56 bg-white dark:bg-[#202024] rounded-2xl border border-slate-200 dark:border-[#333338] shadow-2xl p-1.5 space-y-1 text-xs text-slate-700 dark:text-slate-200 animate-in fade-in zoom-in-95 duration-100"
         >
-          <button onClick={() => { setContextMenu(prev => ({ ...prev, visible: false })); handleItemDoubleClick(contextMenu.targetItem!); }} className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl hover:bg-slate-100 dark:hover:bg-[#2b2b32] font-semibold">
-            {contextMenu.targetItem?.is_dir ? <Folder size={14} className="text-blue-500" /> : <FileIcon size={14} className="text-blue-500" />}
-            <span>{contextMenu.targetItem?.is_dir ? t('explorer.ctx_open_folder') : t('explorer.ctx_open_file')}</span>
-          </button>
-          
-          {!contextMenu.targetItem?.is_dir && (
-            <button onClick={async () => { 
-              setContextMenu(prev => ({ ...prev, visible: false })); 
-              try { await invoke('open_with_dialog', { path: contextMenu.targetItem!.path }); } 
-              catch (e) { alert(e); }
-            }} className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl hover:bg-slate-100 dark:hover:bg-[#2b2b32] font-semibold">
-              <LayoutGrid size={14} className="text-purple-500" />
-              <span>{t('explorer.ctx_open_with')}</span>
-            </button>
+          {contextMenu.targetItem ? (
+            <>
+              <button onClick={() => { const target = contextMenu.targetItem; setContextMenu(prev => ({ ...prev, visible: false })); if (target) handleItemDoubleClick(target); }} className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl hover:bg-slate-100 dark:hover:bg-[#2b2b32] font-semibold">
+                {contextMenu.targetItem.is_dir ? <Folder size={14} className="text-blue-500" /> : <FileIcon size={14} className="text-blue-500" />}
+                <span>{contextMenu.targetItem.is_dir ? t('explorer.ctx_open_folder') : t('explorer.ctx_open_file')}</span>
+              </button>
+
+              {!contextMenu.targetItem.is_dir && (
+                <button onClick={async () => {
+                  const target = contextMenu.targetItem;
+                  setContextMenu(prev => ({ ...prev, visible: false }));
+                  if (!target) return;
+                  try { await invoke('open_with_dialog', { path: target.path }); }
+                  catch (e) { alert(e); }
+                }} className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl hover:bg-slate-100 dark:hover:bg-[#2b2b32] font-semibold">
+                  <LayoutGrid size={14} className="text-purple-500" />
+                  <span>{t('explorer.ctx_open_with')}</span>
+                </button>
+              )}
+
+              {onSetSource && contextMenu.targetItem.is_dir && (
+                <button onClick={() => { const target = contextMenu.targetItem; setContextMenu(prev => ({ ...prev, visible: false })); if (target) onSetSource(target.path); }} className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl hover:bg-slate-100 dark:hover:bg-[#2b2b32] font-semibold text-blue-600 dark:text-blue-400">
+                  <FolderInput size={14} /><span>{t('explorer.ctx_use_source')}</span>
+                </button>
+              )}
+
+              {contextMenu.targetItem.is_dir && (
+                <button onClick={() => { const target = contextMenu.targetItem; setContextMenu(prev => ({ ...prev, visible: false })); if (target) toggleFavorite(target); }} className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl hover:bg-slate-100 dark:hover:bg-[#2b2b32]">
+                  <Star size={14} className="text-amber-500" /><span>{isPathFavorite(contextMenu.targetItem.path) ? t('explorer.ctx_unpin') : t('explorer.ctx_pin')}</span>
+                </button>
+              )}
+
+              <div className="h-[1px] bg-slate-100 dark:bg-[#2e2e34] my-1" />
+              <button onClick={() => { setContextMenu(prev => ({ ...prev, visible: false })); handleCopy(); }} className="w-full flex items-center gap-2.5 px-3 py-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-[#2b2b32]"><Copy size={14} /><span>{t('explorer.ctx_copy')}</span></button>
+              <button onClick={() => { setContextMenu(prev => ({ ...prev, visible: false })); handleCut(); }} className="w-full flex items-center gap-2.5 px-3 py-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-[#2b2b32]"><Scissors size={14} /><span>{t('explorer.ctx_cut')}</span></button>
+              <button onClick={() => { const target = contextMenu.targetItem; setContextMenu(prev => ({ ...prev, visible: false })); if (target) openRenameModal(target); }} className="w-full flex items-center gap-2.5 px-3 py-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-[#2b2b32]"><Edit3 size={14} /><span>{t('explorer.ctx_rename')}</span></button>
+              <button onClick={() => { setContextMenu(prev => ({ ...prev, visible: false })); handleCompressZip(); }} className="w-full flex items-center gap-2.5 px-3 py-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-[#2b2b32]"><FileArchive size={14} className="text-amber-500" /><span>{t('explorer.ctx_zip')}</span></button>
+              <button onClick={() => { setContextMenu(prev => ({ ...prev, visible: false })); setShowDeleteModal(true); }} className="w-full flex items-center gap-2.5 px-3 py-1.5 rounded-xl hover:bg-red-50 dark:hover:bg-red-950/40 text-red-600 font-semibold"><Trash2 size={14} /><span>{t('explorer.ctx_delete')}</span></button>
+              <div className="h-[1px] bg-slate-100 dark:bg-[#2e2e34] my-1" />
+              <button onClick={() => { const target = contextMenu.targetItem; setContextMenu(prev => ({ ...prev, visible: false })); if (target) handleInspectProperties(target.path); }} className="w-full flex items-center gap-2.5 px-3 py-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-[#2b2b32]"><Info size={14} /><span>{t('explorer.ctx_props')}</span></button>
+            </>
+          ) : (
+            <>
+              {clipboard && clipboard.paths.length > 0 && (
+                <button onClick={() => { setContextMenu(prev => ({ ...prev, visible: false })); handlePaste(); }} className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl hover:bg-slate-100 dark:hover:bg-[#2b2b32] font-semibold">
+                  <ClipboardPaste size={14} className="text-blue-500" /><span>{t('explorer.ctx_paste', 'Colar')}</span>
+                </button>
+              )}
+              <button onClick={() => { setContextMenu(prev => ({ ...prev, visible: false })); setShowNewFolderModal(true); }} className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl hover:bg-slate-100 dark:hover:bg-[#2b2b32] font-semibold">
+                <Plus size={14} className="text-emerald-500" /><span>{t('explorer.btn_create_folder')}</span>
+              </button>
+            </>
           )}
-          
-          {onSetSource && contextMenu.targetItem?.is_dir && (
-            <button onClick={() => { setContextMenu(prev => ({ ...prev, visible: false })); onSetSource(contextMenu.targetItem!.path); }} className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl hover:bg-slate-100 dark:hover:bg-[#2b2b32] font-semibold text-blue-600 dark:text-blue-400">
-              <FolderInput size={14} /><span>{t('explorer.ctx_use_source')}</span>
-            </button>
-          )}
-          
-          {contextMenu.targetItem?.is_dir && (
-            <button onClick={() => { setContextMenu(prev => ({ ...prev, visible: false })); toggleFavorite(contextMenu.targetItem!); }} className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl hover:bg-slate-100 dark:hover:bg-[#2b2b32]">
-              <Star size={14} className="text-amber-500" /><span>{isPathFavorite(contextMenu.targetItem.path) ? t('explorer.ctx_unpin') : t('explorer.ctx_pin')}</span>
-            </button>
-          )}
-          
-          <div className="h-[1px] bg-slate-100 dark:bg-[#2e2e34] my-1" />
-          <button onClick={() => { setContextMenu(prev => ({ ...prev, visible: false })); handleCopy(); }} className="w-full flex items-center gap-2.5 px-3 py-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-[#2b2b32]"><Copy size={14} /><span>{t('explorer.ctx_copy')}</span></button>
-          <button onClick={() => { setContextMenu(prev => ({ ...prev, visible: false })); handleCut(); }} className="w-full flex items-center gap-2.5 px-3 py-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-[#2b2b32]"><Scissors size={14} /><span>{t('explorer.ctx_cut')}</span></button>
-          <button onClick={() => { setContextMenu(prev => ({ ...prev, visible: false })); openRenameModal(contextMenu.targetItem!); }} className="w-full flex items-center gap-2.5 px-3 py-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-[#2b2b32]"><Edit3 size={14} /><span>{t('explorer.ctx_rename')}</span></button>
-          <button onClick={() => { setContextMenu(prev => ({ ...prev, visible: false })); handleCompressZip(); }} className="w-full flex items-center gap-2.5 px-3 py-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-[#2b2b32]"><FileArchive size={14} className="text-amber-500" /><span>{t('explorer.ctx_zip')}</span></button>
-          <button onClick={() => { setContextMenu(prev => ({ ...prev, visible: false })); setShowDeleteModal(true); }} className="w-full flex items-center gap-2.5 px-3 py-1.5 rounded-xl hover:bg-red-50 dark:hover:bg-red-950/40 text-red-600 font-semibold"><Trash2 size={14} /><span>{t('explorer.ctx_delete')}</span></button>
-          <div className="h-[1px] bg-slate-100 dark:bg-[#2e2e34] my-1" />
-          <button onClick={() => { setContextMenu(prev => ({ ...prev, visible: false })); handleInspectProperties(contextMenu.targetItem!.path); }} className="w-full flex items-center gap-2.5 px-3 py-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-[#2b2b32]"><Info size={14} /><span>{t('explorer.ctx_props')}</span></button>
         </div>
       )}
 
@@ -1059,7 +1047,7 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ onSetSource, accentC
               <div className="p-3 bg-slate-50 dark:bg-[#18181b] rounded-xl border border-slate-100 dark:border-[#2d2d34] space-y-1.5 font-mono text-[11px]">
                 <p><strong className="text-slate-700 dark:text-slate-200 font-sans">{t('explorer.props_name')}</strong> {propertiesModal.name}</p>
                 <p className="break-all"><strong className="text-slate-700 dark:text-slate-200 font-sans">{t('explorer.props_path')}</strong> {propertiesModal.full_path || propertiesModal.path}</p>
-                <p><strong className="text-slate-700 dark:text-slate-200 font-sans">{t('explorer.props_size')}</strong> {propertiesModal.size_formatted || `${propertiesModal.size_bytes} Bytes`}</p>
+                <p><strong className="text-slate-700 dark:text-slate-200 font-sans">{t('explorer.props_size')}</strong> {propertiesModal.size_formatted || `${propertiesModal.size_bytes ?? 0} Bytes`}</p>
                 <p><strong className="text-slate-700 dark:text-slate-200 font-sans">{t('explorer.props_created')}</strong> {propertiesModal.created_at || '--'}</p>
                 <p><strong className="text-slate-700 dark:text-slate-200 font-sans">{t('explorer.props_modified')}</strong> {propertiesModal.modified_at || '--'}</p>
                 <p><strong className="text-slate-700 dark:text-slate-200 font-sans">{t('explorer.props_attr')}</strong> {propertiesModal.is_readonly ? t('explorer.props_readonly') : t('explorer.props_readwrite')}</p>

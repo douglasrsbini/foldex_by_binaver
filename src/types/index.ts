@@ -45,6 +45,7 @@ export interface RuleAction {
   case_format?: string; // 'NONE', 'UPPER', 'LOWER'
   regex_pattern?: string;
   regex_replacement?: string;
+  convert_format?: string; // usado quando action_type === 'CONVERT_FORMAT' ('PDF', 'PNG', 'JPG')
 }
 
 export interface Rule {
@@ -90,6 +91,29 @@ export interface IntegrityReport {
   verified_records: number;
   compromised_id?: number;
   message: string;
+}
+
+export interface DuplicateGroup {
+  hash: string;
+  size_bytes: number;
+  keep_path: string;
+  duplicate_paths: string[];
+}
+
+export interface JunkFileEntry {
+  path: string;
+  size_bytes: number;
+  reason: string;
+}
+
+export interface StorageHealthReport {
+  scanned_path: string;
+  total_files_scanned: number;
+  total_size_bytes: number;
+  duplicate_groups: DuplicateGroup[];
+  duplicate_wasted_bytes: number;
+  junk_files: JunkFileEntry[];
+  junk_total_bytes: number;
 }
 
 export interface LicenseInfo {
